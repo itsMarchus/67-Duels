@@ -120,7 +120,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       setCameraStatus("ready");
       setRound((current) => current.phase === "cameraSetup" ? { ...current, phase: "readyCheck" } : current);
 
-      trackerRef.current = await createHandLandmarker();
+      trackerRef.current = await createHandLandmarker(settingsRef.current);
       setTrackerStatus("ready");
     } catch (error) {
       setCameraStatus("error");
@@ -229,7 +229,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       if (video && canvas && tracker && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
         const result = tracker.detectForVideo(video, timestamp);
         const nextObservations = observationsFromResult(result);
-        const rawStates = statesFromObservations(nextObservations, settingsRef.current);
+        const rawStates = statesFromObservations(nextObservations);
         const currentRound = roundRef.current;
 
         if (currentRound.phase === "playing") {

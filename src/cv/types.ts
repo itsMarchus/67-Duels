@@ -13,7 +13,7 @@ export type HandObservation = {
   landmarks: Point3D[];
   worldLandmarks?: Point3D[];
   handedness: "Left" | "Right" | "Unknown";
-  confidence: number;
+  handednessConfidence: number;
   zone: Zone;
 };
 
@@ -50,13 +50,17 @@ export type RoundState = {
 export type DetectionSettings = {
   verticalThreshold: number;
   debounceMs: number;
-  minConfidence: number;
+  modelDetectionConfidence: number;
+  modelPresenceConfidence: number;
+  modelTrackingConfidence: number;
   debugOverlay: boolean;
 };
 
 export const PARTY_FORGIVING_SETTINGS: DetectionSettings = {
   verticalThreshold: 0.055,
   debounceMs: 135,
-  minConfidence: 0.42,
+  modelDetectionConfidence: 0.35,
+  modelPresenceConfidence: 0.35,
+  modelTrackingConfidence: 0.3,
   debugOverlay: true
 };
