@@ -82,7 +82,18 @@ A rep is recorded when the two hands alternate between these states:
 - Left hand high, right hand low
 - Right hand high, left hand low
 
-The default party-forgiving settings use a normalized vertical threshold of `0.055`, a `135 ms` debounce, and a minimum confidence of `0.42`. These values live in `src/cv/types.ts`.
+The fast-gesture settings use a normalized vertical threshold of `0.040`, an `80 ms` debounce, a `180 ms` missing-hand grace period, and MediaPipe detection/presence/tracking thresholds of `0.35 / 0.35 / 0.30`. These values live in `src/cv/types.ts`.
+
+### Fast-Gesture Diagnostics
+
+The tracker processes each decoded camera frame once and limits React tracking rerenders to 20 Hz so scoring has priority. Select the bug button in the arena to show:
+
+- Processed CV FPS and actual camera FPS
+- Rolling average inference latency
+- Current detected-hand count and repeated frames skipped
+- Accepted reps, debounce rejections, and brief-dropout grace events for each player
+
+Brief hand loss preserves the last stable gesture for up to `180 ms`, but scoring remains observed-only: missing frames never create estimated extra reps.
 
 ## Arcade Records
 
