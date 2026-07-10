@@ -7,7 +7,8 @@ import {
   PARTY_FORGIVING_SETTINGS,
   type DetectionSettings,
   type HandObservation,
-  type PlayerTrackingState
+  type PlayerTrackingState,
+  type TrackingMetrics
 } from "./types";
 import { assignZone, centerOfPalmLandmarks } from "./zones";
 
@@ -75,7 +76,8 @@ export function drawHandOverlay(
   canvas: HTMLCanvasElement,
   observations: HandObservation[],
   playerStates: Record<"left" | "right", PlayerTrackingState>,
-  debugOverlay: boolean
+  debugOverlay: boolean,
+  metrics?: TrackingMetrics
 ): void {
   const context = canvas.getContext("2d");
   if (!context) {
@@ -118,6 +120,9 @@ export function drawHandOverlay(
 
   drawDebugText(context, canvas, playerStates.left, 24, "#f43f5e");
   drawDebugText(context, canvas, playerStates.right, canvas.width - 300, "#2563eb");
+  if (metrics) {
+    drawMetricsText(context, canvas, metrics);
+  }
 }
 
 async function createWithDelegate(
@@ -159,4 +164,52 @@ function drawDebugText(
     context.fillText(state.invalidReason, x, 62);
   }
   context.restore();
+}
+
+function drawMetricsText(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  metrics: TrackingMetrics
+): void {
+  const fontSize = Math.max(11, canvas.width * 0.009);
+  const lineHeight = fontSize * 1.4;
+  const panelWidth = Math.min(canvas.width - 24, Math.max(340, canvas.width * 0.5));
+  const panelHeight = lineHeight * 3 + 20;
+  const x = (canvas.width - panelWidth) / 2;
+  const y = canvas.height - panelHeight - 14;
+  const left = metrics.diagnostics.left;
+  const right = metrics.diagnostics.right;
+
+  context.save();
+  context.fillStyle = "rgba(17, 24, 39, 0.9)";
+  context.fillRect(x, y, panelWidth, panelHeight);
+  context.strokeStyle = "#ffffff";
+  context.lineWidth = 2;
+  context.strokeRect(x, y, panelWidth, panelHeight);
+  context.font = fontSize + "px ui-monospace, SFMono-Regular, Consolas, monospace";
+  context.fillStyle = "#ffffff";
+  context.shadowBlur = 0;
+  context.fillText(
+    "CV " + metrics.processedFps.toFixed(1) + "/" + formatCameraFps(metrics.cameraFps)
+      + " | " + metrics.averageInferenceMs.toFixed(1) + "ms | hands " + metrics.detectedHands
+      + " | repeat " + metrics.duplicateFramesSkipped,
+    x + 10,
+    y + lineHeight
+  );
+  context.fillText(
+    "LEFT reps " + left.acceptedReps + " | reject " + left.debounceRejections
+      + " | grace " + left.graceDropouts + (left.graceActive ? "*" : ""),
+    x + 10,
+    y + lineHeight * 2
+  );
+  context.fillText(
+    "RIGHT reps " + right.acceptedReps + " | reject " + right.debounceRejections
+      + " | grace " + right.graceDropouts + (right.graceActive ? "*" : ""),
+    x + 10,
+    y + lineHeight * 3
+  );
+  context.restore();
+}
+function formatCameraFps(cameraFps: number): string {
+  return cameraFps > 0 ? cameraFps.toFixed(0) + "fps" : "?fps";
 }

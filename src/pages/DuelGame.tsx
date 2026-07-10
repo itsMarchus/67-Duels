@@ -4,12 +4,12 @@ import { useNavigate } from "react-router-dom";
 import type { HandLandmarker } from "@mediapipe/tasks-vision";
 import { appendMatch, createMatchId, createMatchRecord } from "../arcade/records";
 import { clearActivePlayers, type ActivePlayers } from "../arcade/players";
+import { FrameMetricsTracker, shouldProcessVideoFrame } from "../cv/frameMetrics";
 import { createHandLandmarker, drawHandOverlay, observationsFromResult } from "../cv/handTracker";
 import { RepCounter } from "../cv/repCounter";
 import {
   PARTY_FORGIVING_SETTINGS,
   type DetectionSettings,
-  type HandObservation,
   type PlayerId,
   type PlayerTrackingState,
   type RoundState
@@ -52,7 +52,11 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const trackerRef = useRef<HandLandmarker | null>(null);
-  const frameRef = useRef<number>();
+  const fallbackFrameRef = useRef<number>();
+  const videoFrameCallbackRef = useRef<number>();
+  const timerFrameRef = useRef<number>();
+  const metricsRef = useRef(new FrameMetricsTracker());
+  const cameraFpsRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
   const roundRef = useRef<RoundState>(createInitialRoundState());
   const settingsRef = useRef<DetectionSettings>(PARTY_FORGIVING_SETTINGS);
@@ -69,7 +73,6 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   const [errorMessage, setErrorMessage] = useState<string>();
   const [round, setRound] = useState<RoundState>(() => createInitialRoundState());
   const [countdownLeft, setCountdownLeft] = useState<number | null>(null);
-  const [observations, setObservations] = useState<HandObservation[]>([]);
   const [playerStates, setPlayerStates] = useState<Record<PlayerId, PlayerTrackingState>>(EMPTY_TRACKING);
   const [settings, setSettings] = useState<DetectionSettings>(PARTY_FORGIVING_SETTINGS);
   const [memeTick, setMemeTick] = useState(0);
@@ -110,6 +113,8 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       });
 
       streamRef.current = stream;
+      cameraFpsRef.current = stream.getVideoTracks()[0]?.getSettings().frameRate ?? 0;
+      metricsRef.current.reset();
       const video = videoRef.current;
       if (!video) {
         throw new Error("Video element is not ready.");
@@ -221,52 +226,121 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   }, [cameraStatus]);
 
   useEffect(() => {
-    const detectFrame = (timestamp: number) => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
+    if (trackerStatus !== "ready") {
+      return;
+    }
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) {
+      return;
+    }
+
+    let cancelled = false;
+    let lastVideoTime = -1;
+    let lastTrackingRenderAt = Number.NEGATIVE_INFINITY;
+
+    const processFrame = (timestamp: number) => {
       const tracker = trackerRef.current;
+      if (!tracker || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        return;
+      }
 
-      if (video && canvas && tracker && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        const result = tracker.detectForVideo(video, timestamp);
-        const nextObservations = observationsFromResult(result);
-        const rawStates = statesFromObservations(nextObservations);
-        const currentRound = roundRef.current;
+      if (!shouldProcessVideoFrame(video.currentTime, lastVideoTime)) {
+        metricsRef.current.recordSkippedFrame();
+        return;
+      }
+      lastVideoTime = video.currentTime;
 
-        if (currentRound.phase === "playing") {
-          for (const playerId of ["left", "right"] as const) {
-            const counter = countersRef.current[playerId];
-            const event = counter.update(rawStates[playerId].handCenters.slice(0, 2), timestamp);
-            if (event) {
-              setRound((activeRound) => scoreRep(activeRound, playerId));
-            }
+      const inferenceStartedAt = performance.now();
+      const result = tracker.detectForVideo(video, timestamp);
+      const inferenceMs = performance.now() - inferenceStartedAt;
+      const nextObservations = observationsFromResult(result);
+      const rawStates = statesFromObservations(nextObservations);
+      const currentRound = roundRef.current;
+
+      if (currentRound.phase === "playing") {
+        for (const playerId of ["left", "right"] as const) {
+          const counter = countersRef.current[playerId];
+          const event = counter.update(rawStates[playerId].handCenters, timestamp);
+          if (event) {
+            setRound((activeRound) => scoreRep(activeRound, playerId));
           }
         }
+      }
 
-        const nextStates = {
-          left: { ...rawStates.left, swapState: countersRef.current.left.getState() },
-          right: { ...rawStates.right, swapState: countersRef.current.right.getState() }
-        };
+      const nextStates = {
+        left: { ...rawStates.left, swapState: countersRef.current.left.getState() },
+        right: { ...rawStates.right, swapState: countersRef.current.right.getState() }
+      };
 
-        setObservations(nextObservations);
+      metricsRef.current.recordFrame(timestamp, inferenceMs, nextObservations.length);
+      if (timestamp - lastTrackingRenderAt >= 50) {
         setPlayerStates(nextStates);
-        drawHandOverlay(canvas, nextObservations, nextStates, settingsRef.current.debugOverlay);
+        lastTrackingRenderAt = timestamp;
       }
 
-      if (roundRef.current.phase === "playing") {
-        setRound((current) => tickRound(current, timestamp));
-      }
-
-      frameRef.current = window.requestAnimationFrame(detectFrame);
+      drawHandOverlay(
+        canvas,
+        nextObservations,
+        nextStates,
+        settingsRef.current.debugOverlay,
+        metricsRef.current.snapshot(cameraFpsRef.current, {
+          left: countersRef.current.left.getDiagnostics(),
+          right: countersRef.current.right.getDiagnostics()
+        })
+      );
     };
 
-    frameRef.current = window.requestAnimationFrame(detectFrame);
+    const scheduleNextFrame = () => {
+      if (cancelled) {
+        return;
+      }
+
+      if (typeof video.requestVideoFrameCallback === "function") {
+        videoFrameCallbackRef.current = video.requestVideoFrameCallback((timestamp) => {
+          processFrame(timestamp);
+          scheduleNextFrame();
+        });
+        return;
+      }
+
+      fallbackFrameRef.current = window.requestAnimationFrame((timestamp) => {
+        processFrame(timestamp);
+        scheduleNextFrame();
+      });
+    };
+
+    scheduleNextFrame();
+
     return () => {
-      if (frameRef.current !== undefined) {
-        window.cancelAnimationFrame(frameRef.current);
+      cancelled = true;
+      if (videoFrameCallbackRef.current !== undefined && typeof video.cancelVideoFrameCallback === "function") {
+        video.cancelVideoFrameCallback(videoFrameCallbackRef.current);
+      }
+      if (fallbackFrameRef.current !== undefined) {
+        window.cancelAnimationFrame(fallbackFrameRef.current);
       }
     };
-  }, []);
+  }, [trackerStatus]);
 
+  useEffect(() => {
+    if (round.phase !== "playing") {
+      return;
+    }
+
+    const updateTimer = (timestamp: number) => {
+      setRound((current) => tickRound(current, timestamp));
+      timerFrameRef.current = window.requestAnimationFrame(updateTimer);
+    };
+
+    timerFrameRef.current = window.requestAnimationFrame(updateTimer);
+    return () => {
+      if (timerFrameRef.current !== undefined) {
+        window.cancelAnimationFrame(timerFrameRef.current);
+      }
+    };
+  }, [round.phase]);
   useEffect(() => {
     return () => {
       for (const timer of countdownTimersRef.current) {

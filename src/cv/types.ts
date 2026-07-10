@@ -45,6 +45,14 @@ export type RepDiagnostics = {
   graceActive: boolean;
 };
 
+export type TrackingMetrics = {
+  processedFps: number;
+  averageInferenceMs: number;
+  detectedHands: number;
+  cameraFps: number;
+  duplicateFramesSkipped: number;
+  diagnostics: Record<PlayerId, RepDiagnostics>;
+};
 export type RoundState = {
   phase: RoundPhase;
   remainingTime: number;
