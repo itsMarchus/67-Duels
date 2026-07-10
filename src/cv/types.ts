@@ -38,6 +38,13 @@ export type RepEvent = {
   nextState: SwapState;
 };
 
+export type RepDiagnostics = {
+  acceptedReps: number;
+  debounceRejections: number;
+  graceDropouts: number;
+  graceActive: boolean;
+};
+
 export type RoundState = {
   phase: RoundPhase;
   remainingTime: number;
@@ -50,6 +57,7 @@ export type RoundState = {
 export type DetectionSettings = {
   verticalThreshold: number;
   debounceMs: number;
+  dropoutGraceMs: number;
   modelDetectionConfidence: number;
   modelPresenceConfidence: number;
   modelTrackingConfidence: number;
@@ -57,8 +65,9 @@ export type DetectionSettings = {
 };
 
 export const PARTY_FORGIVING_SETTINGS: DetectionSettings = {
-  verticalThreshold: 0.055,
-  debounceMs: 135,
+  verticalThreshold: 0.04,
+  debounceMs: 80,
+  dropoutGraceMs: 180,
   modelDetectionConfidence: 0.35,
   modelPresenceConfidence: 0.35,
   modelTrackingConfidence: 0.3,
