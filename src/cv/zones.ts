@@ -1,5 +1,7 @@
 import type { HandCenter, PlayerTrackingState, Zone } from "./types";
 
+const PALM_LANDMARK_INDICES = [0, 5, 9, 13, 17];
+
 export function assignZone(x: number): Zone {
   if (x === 0.5) {
     return "center";
@@ -25,6 +27,14 @@ export function centerOfLandmarks(landmarks: HandCenter[]): HandCenter {
     x: Number((total.x / landmarks.length).toFixed(6)),
     y: Number((total.y / landmarks.length).toFixed(6))
   };
+}
+
+export function centerOfPalmLandmarks(landmarks: HandCenter[]): HandCenter {
+  const palmLandmarks = PALM_LANDMARK_INDICES
+    .map((index) => landmarks[index])
+    .filter((point): point is HandCenter => Boolean(point));
+
+  return centerOfLandmarks(palmLandmarks.length >= 3 ? palmLandmarks : landmarks);
 }
 
 export function buildPlayerTrackingState(

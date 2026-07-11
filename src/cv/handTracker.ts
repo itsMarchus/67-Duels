@@ -3,8 +3,14 @@ import {
   HandLandmarker,
   type HandLandmarkerResult
 } from "@mediapipe/tasks-vision";
-import type { HandObservation, PlayerTrackingState } from "./types";
-import { assignZone, centerOfLandmarks } from "./zones";
+import {
+  PARTY_FORGIVING_SETTINGS,
+  type DetectionSettings,
+  type HandObservation,
+  type PlayerTrackingState,
+  type TrackingMetrics
+} from "./types";
+import { assignZone, centerOfPalmLandmarks } from "./zones";
 
 export const MODEL_PATH = "/models/hand_landmarker.task";
 export const WASM_PATH = "/wasm";
@@ -33,14 +39,16 @@ const HAND_CONNECTIONS: Array<[number, number]> = [
   [0, 17]
 ];
 
-export async function createHandLandmarker(): Promise<HandLandmarker> {
+export async function createHandLandmarker(
+  settings: DetectionSettings = PARTY_FORGIVING_SETTINGS
+): Promise<HandLandmarker> {
   const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
 
   try {
-    return await createWithDelegate("GPU", vision);
+    return await createWithDelegate("GPU", vision, settings);
   } catch (gpuError) {
     console.warn("MediaPipe GPU delegate failed, falling back to CPU", gpuError);
-    return createWithDelegate("CPU", vision);
+    return createWithDelegate("CPU", vision, settings);
   }
 }
 
@@ -51,14 +59,14 @@ export function observationsFromResult(result: HandLandmarkerResult): HandObserv
       y: landmark.y,
       z: landmark.z
     }));
-    const center = centerOfLandmarks(mirroredLandmarks);
+    const center = centerOfPalmLandmarks(mirroredLandmarks);
     const handedness = result.handedness[index]?.[0];
 
     return {
       landmarks: mirroredLandmarks,
       worldLandmarks: result.worldLandmarks[index],
       handedness: handedness?.categoryName === "Left" || handedness?.categoryName === "Right" ? handedness.categoryName : "Unknown",
-      confidence: handedness?.score ?? 1,
+      handednessConfidence: handedness?.score ?? 0,
       zone: assignZone(center.x)
     };
   });
@@ -68,7 +76,8 @@ export function drawHandOverlay(
   canvas: HTMLCanvasElement,
   observations: HandObservation[],
   playerStates: Record<"left" | "right", PlayerTrackingState>,
-  debugOverlay: boolean
+  debugOverlay: boolean,
+  metrics?: TrackingMetrics
 ): void {
   const context = canvas.getContext("2d");
   if (!context) {
@@ -111,9 +120,16 @@ export function drawHandOverlay(
 
   drawDebugText(context, canvas, playerStates.left, 24, "#f43f5e");
   drawDebugText(context, canvas, playerStates.right, canvas.width - 300, "#2563eb");
+  if (metrics) {
+    drawMetricsText(context, canvas, metrics);
+  }
 }
 
-async function createWithDelegate(delegate: "CPU" | "GPU", vision: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>) {
+async function createWithDelegate(
+  delegate: "CPU" | "GPU",
+  vision: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>,
+  settings: DetectionSettings
+) {
   return HandLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath: MODEL_PATH,
@@ -121,9 +137,9 @@ async function createWithDelegate(delegate: "CPU" | "GPU", vision: Awaited<Retur
     },
     runningMode: "VIDEO",
     numHands: 4,
-    minHandDetectionConfidence: 0.42,
-    minHandPresenceConfidence: 0.42,
-    minTrackingConfidence: 0.42
+    minHandDetectionConfidence: settings.modelDetectionConfidence,
+    minHandPresenceConfidence: settings.modelPresenceConfidence,
+    minTrackingConfidence: settings.modelTrackingConfidence
   });
 }
 
@@ -135,13 +151,65 @@ function drawDebugText(
   color: string
 ): void {
   context.save();
-  context.font = `${Math.max(14, canvas.width * 0.014)}px ui-monospace, SFMono-Regular, Consolas, monospace`;
+  context.font = Math.max(14, canvas.width * 0.014) + "px ui-monospace, SFMono-Regular, Consolas, monospace";
   context.fillStyle = color;
   context.shadowColor = "white";
   context.shadowBlur = 4;
-  context.fillText(`${state.playerId.toUpperCase()} hands:${state.visibleHands} state:${state.swapState}`, x, 36);
+  context.fillText(
+    state.playerId.toUpperCase() + " hands:" + state.visibleHands + " state:" + state.swapState,
+    x,
+    36
+  );
   if (state.invalidReason) {
     context.fillText(state.invalidReason, x, 62);
   }
   context.restore();
+}
+
+function drawMetricsText(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  metrics: TrackingMetrics
+): void {
+  const fontSize = Math.max(11, canvas.width * 0.009);
+  const lineHeight = fontSize * 1.4;
+  const panelWidth = Math.min(canvas.width - 24, Math.max(340, canvas.width * 0.5));
+  const panelHeight = lineHeight * 3 + 20;
+  const x = (canvas.width - panelWidth) / 2;
+  const y = canvas.height - panelHeight - 14;
+  const left = metrics.diagnostics.left;
+  const right = metrics.diagnostics.right;
+
+  context.save();
+  context.fillStyle = "rgba(17, 24, 39, 0.9)";
+  context.fillRect(x, y, panelWidth, panelHeight);
+  context.strokeStyle = "#ffffff";
+  context.lineWidth = 2;
+  context.strokeRect(x, y, panelWidth, panelHeight);
+  context.font = fontSize + "px ui-monospace, SFMono-Regular, Consolas, monospace";
+  context.fillStyle = "#ffffff";
+  context.shadowBlur = 0;
+  context.fillText(
+    "CV " + metrics.processedFps.toFixed(1) + "/" + formatCameraFps(metrics.cameraFps)
+      + " | " + metrics.averageInferenceMs.toFixed(1) + "ms | hands " + metrics.detectedHands
+      + " | repeat " + metrics.duplicateFramesSkipped,
+    x + 10,
+    y + lineHeight
+  );
+  context.fillText(
+    "LEFT reps " + left.acceptedReps + " | reject " + left.debounceRejections
+      + " | grace " + left.graceDropouts + (left.graceActive ? "*" : ""),
+    x + 10,
+    y + lineHeight * 2
+  );
+  context.fillText(
+    "RIGHT reps " + right.acceptedReps + " | reject " + right.debounceRejections
+      + " | grace " + right.graceDropouts + (right.graceActive ? "*" : ""),
+    x + 10,
+    y + lineHeight * 3
+  );
+  context.restore();
+}
+function formatCameraFps(cameraFps: number): string {
+  return cameraFps > 0 ? cameraFps.toFixed(0) + "fps" : "?fps";
 }

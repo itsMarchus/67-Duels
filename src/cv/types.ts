@@ -13,7 +13,7 @@ export type HandObservation = {
   landmarks: Point3D[];
   worldLandmarks?: Point3D[];
   handedness: "Left" | "Right" | "Unknown";
-  confidence: number;
+  handednessConfidence: number;
   zone: Zone;
 };
 
@@ -38,6 +38,21 @@ export type RepEvent = {
   nextState: SwapState;
 };
 
+export type RepDiagnostics = {
+  acceptedReps: number;
+  debounceRejections: number;
+  graceDropouts: number;
+  graceActive: boolean;
+};
+
+export type TrackingMetrics = {
+  processedFps: number;
+  averageInferenceMs: number;
+  detectedHands: number;
+  cameraFps: number;
+  duplicateFramesSkipped: number;
+  diagnostics: Record<PlayerId, RepDiagnostics>;
+};
 export type RoundState = {
   phase: RoundPhase;
   remainingTime: number;
@@ -50,13 +65,19 @@ export type RoundState = {
 export type DetectionSettings = {
   verticalThreshold: number;
   debounceMs: number;
-  minConfidence: number;
+  dropoutGraceMs: number;
+  modelDetectionConfidence: number;
+  modelPresenceConfidence: number;
+  modelTrackingConfidence: number;
   debugOverlay: boolean;
 };
 
 export const PARTY_FORGIVING_SETTINGS: DetectionSettings = {
-  verticalThreshold: 0.055,
-  debounceMs: 135,
-  minConfidence: 0.42,
+  verticalThreshold: 0.04,
+  debounceMs: 80,
+  dropoutGraceMs: 180,
+  modelDetectionConfidence: 0.35,
+  modelPresenceConfidence: 0.35,
+  modelTrackingConfidence: 0.3,
   debugOverlay: true
 };
