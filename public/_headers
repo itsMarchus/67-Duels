@@ -1,0 +1,14 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=()
+  X-Frame-Options: DENY
+
+/models/*
+  Cache-Control: public, max-age=86400
+
+/wasm/*
+  Cache-Control: public, max-age=86400
+
+/memes/*
+  Cache-Control: public, max-age=604800

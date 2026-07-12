@@ -17,6 +17,7 @@ import {
 import { loadActivePlayers, saveActivePlayers, type ActivePlayers } from "../arcade/players";
 import { PlayerSetupDialog } from "../components/PlayerSetupDialog";
 import { RecordsDialog } from "../components/RecordsDialog";
+import { publicAssetUrl } from "../config/assets";
 import "./LandingPage.css";
 
 const TECH_STEPS = [
@@ -34,6 +35,7 @@ export function LandingPage() {
   const requestedSetup = useMemo(() => new URLSearchParams(location.search).get("setup") === "1", [location.search]);
   const [setupOpen, setSetupOpen] = useState(requestedSetup);
   const [recordsOpen, setRecordsOpen] = useState(false);
+  const [setupError, setSetupError] = useState<string>();
   const initialPlayers = useMemo(() => loadActivePlayers(), [setupOpen]);
 
   useEffect(() => {
@@ -44,8 +46,13 @@ export function LandingPage() {
   }, [navigate, requestedSetup]);
 
   const enterArena = (players: ActivePlayers) => {
-    saveActivePlayers(players);
-    navigate("/play");
+    try {
+      saveActivePlayers(players);
+      setSetupError(undefined);
+      navigate("/play");
+    } catch {
+      setSetupError("This browser blocked session storage. Allow site data, then try again.");
+    }
   };
 
   return (
@@ -63,7 +70,7 @@ export function LandingPage() {
         <div className="hero-stage">
           <span className="hero-sticker hero-sticker-left">TWO PLAYERS</span>
           <span className="hero-sticker hero-sticker-right">ONE CAMERA</span>
-          <img className="inventor-meme" src="/memes/67_inventor_disorted_img.jpg" alt="The distorted 67 inventor meme" />
+          <img className="inventor-meme" src={publicAssetUrl("memes/67_inventor_disorted_img.jpg")} alt="The distorted 67 inventor meme" />
 
           <div className="hero-copy">
             <span className="hero-kicker"><Swords size={20} /> FRESHIE ARCADE CHALLENGE</span>
@@ -98,9 +105,9 @@ export function LandingPage() {
 
           <div className="explain-scene">
             <div className="board-note">YES, THE CAMERA<br />IS JUDGING YOU</div>
-            <img className="explain-meme" src="/memes/trying_to_explain.jpg" alt="A person enthusiastically explaining a board" />
+            <img className="explain-meme" src={publicAssetUrl("memes/trying_to_explain.jpg")} alt="A person enthusiastically explaining a board" />
             <figure className="unimpressed-callout">
-              <img src="/memes/unimpressed-not-impressed.gif" alt="An unimpressed reaction" />
+              <img src={publicAssetUrl("memes/unimpressed-not-impressed.gif")} alt="An unimpressed reaction" />
               <figcaption>One hand visible?<br /><strong>No points. Tragic.</strong></figcaption>
             </figure>
           </div>
@@ -114,7 +121,7 @@ export function LandingPage() {
               <span className="section-kicker">COMPUTER VISION, BUT MAKE IT 67</span>
               <h2>What is happening behind the camera?</h2>
             </div>
-            <img src="/memes/monkey-thinking.png" alt="A monkey thinking very hard about computer vision" />
+            <img src={publicAssetUrl("memes/monkey-thinking.png")} alt="A monkey thinking very hard about computer vision" />
           </div>
 
           <div className="tech-flow" aria-label="How the computer vision scoring pipeline works">
@@ -140,7 +147,7 @@ export function LandingPage() {
 
       <section className="final-cta">
         <div className="section-inner final-cta-inner">
-          <img src="/memes/shocked-face-shocked-meme.gif" alt="A shocked reaction to an unbelievable 67 score" />
+          <img src={publicAssetUrl("memes/shocked-face-shocked-meme.gif")} alt="A shocked reaction to an unbelievable 67 score" />
           <div>
             <span className="section-kicker">THE LEADERBOARD WILL REMEMBER THIS</span>
             <h2>Okay, enough theory.<br />Do the 67.</h2>
@@ -154,7 +161,7 @@ export function LandingPage() {
 
       <footer className="site-footer"><strong>67 DUELS</strong><span>Built for freshies, powered by questionable hand coordination.</span></footer>
 
-      {setupOpen && <PlayerSetupDialog initialPlayers={initialPlayers} onClose={() => setSetupOpen(false)} onSubmit={enterArena} />}
+      {setupOpen && <PlayerSetupDialog errorMessage={setupError} initialPlayers={initialPlayers} onClose={() => setSetupOpen(false)} onSubmit={enterArena} />}
       {recordsOpen && <RecordsDialog onClose={() => setRecordsOpen(false)} />}
     </main>
   );

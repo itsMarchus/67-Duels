@@ -79,5 +79,5 @@ export const PARTY_FORGIVING_SETTINGS: DetectionSettings = {
   modelDetectionConfidence: 0.35,
   modelPresenceConfidence: 0.35,
   modelTrackingConfidence: 0.3,
-  debugOverlay: true
+  debugOverlay: false
 };

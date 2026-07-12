@@ -66,9 +66,13 @@ export function RecordsDialog({ onClose }: RecordsDialogProps) {
       return;
     }
 
-    clearArcadeRecords();
-    setRecords({ version: 1, matches: [] });
-    setNotice("All arcade records cleared.");
+    try {
+      clearArcadeRecords();
+      setRecords({ version: 1, matches: [] });
+      setNotice("All arcade records cleared.");
+    } catch {
+      setNotice("This browser could not clear its saved records.");
+    }
   };
 
   return (

@@ -10,10 +10,11 @@ import {
   type PlayerTrackingState,
   type TrackingMetrics
 } from "./types";
+import { publicAssetUrl } from "../config/assets";
 import { assignZone, centerOfPalmLandmarks } from "./zones";
 
-export const MODEL_PATH = "/models/hand_landmarker.task";
-export const WASM_PATH = "/wasm";
+export const MODEL_PATH = publicAssetUrl("models/hand_landmarker.task");
+export const WASM_PATH = publicAssetUrl("wasm");
 
 const HAND_CONNECTIONS: Array<[number, number]> = [
   [0, 1],

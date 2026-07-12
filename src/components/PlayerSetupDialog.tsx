@@ -4,12 +4,13 @@ import { playerNameError, type ActivePlayers } from "../arcade/players";
 import { ModalFrame } from "./ModalFrame";
 
 type PlayerSetupDialogProps = {
+  errorMessage?: string;
   initialPlayers?: ActivePlayers;
   onClose: () => void;
   onSubmit: (players: ActivePlayers) => void;
 };
 
-export function PlayerSetupDialog({ initialPlayers, onClose, onSubmit }: PlayerSetupDialogProps) {
+export function PlayerSetupDialog({ errorMessage, initialPlayers, onClose, onSubmit }: PlayerSetupDialogProps) {
   const [left, setLeft] = useState(initialPlayers?.left ?? "");
   const [right, setRight] = useState(initialPlayers?.right ?? "");
   const [submitted, setSubmitted] = useState(false);
@@ -79,6 +80,7 @@ export function PlayerSetupDialog({ initialPlayers, onClose, onSubmit }: PlayerS
         <button className="landing-button landing-button-primary setup-submit" type="submit">
           Enter arena <ArrowRight size={20} />
         </button>
+        {errorMessage && <p className="setup-error" role="alert">{errorMessage}</p>}
       </form>
     </ModalFrame>
   );

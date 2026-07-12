@@ -138,6 +138,7 @@ npm run build     # Type-check and create a production build
 npm run preview   # Preview the production build locally
 npm test          # Run Vitest in watch mode
 npm run test:run  # Run the complete test suite once
+npm run check     # Run tests and the production build release gate
 ```
 
 The tests cover lane assignment, hand tracking state, swap classification, debounce behavior, round timing, player names, match persistence, record pruning, leaderboard ties, and winner labels.
@@ -146,11 +147,26 @@ The tests cover lane assignment, hand tracking state, swap classification, debou
 
 Landing-page images live in `public/memes/`. The duel arena can also load optional meme images listed in `public/memes/manifest.json`; when the manifest is empty, the arena uses generated text stickers.
 
-## Deployment Notes
+## Production Deployment
 
-The project builds as a static Vite app. A deployed version must use HTTPS for browser camera access and should redirect unknown routes such as `/play` to `index.html` so React Router can handle them.
+67 Duels is a static application. Run the release gate and upload the generated `dist/` directory:
 
-For an event booth, keep the browser open on one computer profile so local rankings remain available throughout the session. Export the records JSON periodically as a backup.
+```bash
+npm ci
+npm run check
+```
+
+No application or inference server is required. Static hosting still needs to deliver the files over HTTPS because browsers block webcam access on insecure non-localhost pages.
+
+Deployment support included in this repository:
+
+- `vercel.json` provides Vercel SPA rewrites and camera-focused security headers.
+- `public/_redirects` and `public/_headers` provide the equivalent Netlify configuration.
+- GitHub Actions runs all tests and the production build on pull requests and pushes to `main`.
+- Public assets and React Router honor Vite's base path. For subpath hosting, build with a matching base, such as `npm run build -- --base=/67-Duels/`.
+- Other static hosts must serve `index.html` for unknown application routes such as `/play`.
+
+Before the event, open the deployed HTTPS URL on the actual arcade laptop, grant camera permission, complete a two-player round, reload the page, and confirm the record remains. Keep one browser profile for the whole event and export records periodically as a backup.
 
 ## Built With
 

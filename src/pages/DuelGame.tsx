@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import type { HandLandmarker } from "@mediapipe/tasks-vision";
 import { appendMatch, createMatchId, createMatchRecord } from "../arcade/records";
 import { clearActivePlayers, type ActivePlayers } from "../arcade/players";
+import { cameraErrorMessage, cameraSupportError, stopMediaStream } from "../cv/camera";
 import { FrameMetricsTracker, shouldProcessVideoFrame } from "../cv/frameMetrics";
 import { createHandLandmarker, drawHandOverlay, observationsFromResult } from "../cv/handTracker";
 import { RepCounter } from "../cv/repCounter";
@@ -56,6 +57,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   const videoFrameCallbackRef = useRef<number>();
   const timerFrameRef = useRef<number>();
   const metricsRef = useRef(new FrameMetricsTracker());
+  const cameraRequestIdRef = useRef(0);
   const cameraFpsRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
   const roundRef = useRef<RoundState>(createInitialRoundState());
@@ -97,12 +99,40 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   }, [bothPlayersReady, cameraStatus, round.phase, trackerStatus]);
 
   const startCamera = useCallback(async () => {
+    const supportError = cameraSupportError(
+      window.isSecureContext,
+      window.location.hostname,
+      navigator.mediaDevices
+    );
+    if (supportError || !navigator.mediaDevices?.getUserMedia) {
+      setCameraStatus("error");
+      setTrackerStatus("error");
+      setErrorMessage(supportError ?? "This browser cannot access a webcam.");
+      return;
+    }
+
+    const requestId = ++cameraRequestIdRef.current;
+    const mediaDevices = navigator.mediaDevices;
+    const video = videoRef.current;
+    if (!video) {
+      setCameraStatus("error");
+      setTrackerStatus("error");
+      setErrorMessage("The camera display is not ready. Reload the page and try again.");
+      return;
+    }
+
     setCameraStatus("requesting");
     setTrackerStatus("loading");
     setErrorMessage(undefined);
+    stopMediaStream(streamRef.current);
+    streamRef.current = null;
+    trackerRef.current?.close();
+    trackerRef.current = null;
+    video.srcObject = null;
 
+    let stream: MediaStream | undefined;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await mediaDevices.getUserMedia({
         audio: false,
         video: {
           width: { ideal: 1280 },
@@ -112,25 +142,58 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         }
       });
 
+      if (requestId !== cameraRequestIdRef.current) {
+        stopMediaStream(stream);
+        return;
+      }
+
       streamRef.current = stream;
       cameraFpsRef.current = stream.getVideoTracks()[0]?.getSettings().frameRate ?? 0;
       metricsRef.current.reset();
-      const video = videoRef.current;
-      if (!video) {
-        throw new Error("Video element is not ready.");
-      }
-
       video.srcObject = stream;
       await video.play();
       setCameraStatus("ready");
       setRound((current) => current.phase === "cameraSetup" ? { ...current, phase: "readyCheck" } : current);
 
-      trackerRef.current = await createHandLandmarker(settingsRef.current);
+      const tracker = await createHandLandmarker(settingsRef.current);
+      if (requestId !== cameraRequestIdRef.current) {
+        tracker.close();
+        stopMediaStream(stream);
+        return;
+      }
+
+      trackerRef.current = tracker;
       setTrackerStatus("ready");
+
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        if (streamRef.current !== stream) {
+          return;
+        }
+
+        cameraRequestIdRef.current += 1;
+        stopMediaStream(stream);
+        streamRef.current = null;
+        trackerRef.current?.close();
+        trackerRef.current = null;
+        video.srcObject = null;
+        setCameraStatus("error");
+        setTrackerStatus("idle");
+        setErrorMessage("The webcam disconnected. Reconnect it, then select Camera.");
+      }, { once: true });
     } catch (error) {
+      if (requestId !== cameraRequestIdRef.current) {
+        stopMediaStream(stream);
+        return;
+      }
+
+      stopMediaStream(stream);
+      streamRef.current = null;
+      trackerRef.current?.close();
+      trackerRef.current = null;
+      video.srcObject = null;
       setCameraStatus("error");
       setTrackerStatus("error");
-      setErrorMessage(error instanceof Error ? error.message : "Camera or model setup failed.");
+      setErrorMessage(cameraErrorMessage(error));
     }
   }, []);
 
@@ -195,7 +258,11 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       return;
     }
 
-    appendMatch(createMatchRecord(matchId, players, round.scores, round.winner));
+    try {
+      appendMatch(createMatchRecord(matchId, players, round.scores, round.winner));
+    } catch {
+      setErrorMessage("Round complete, but this browser could not save the match record.");
+    }
     savedMatchIdRef.current = matchId;
   }, [players, round.phase, round.scores, round.winner]);
 
@@ -346,14 +413,17 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       for (const timer of countdownTimersRef.current) {
         window.clearTimeout(timer);
       }
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraRequestIdRef.current += 1;
+      stopMediaStream(streamRef.current);
+      streamRef.current = null;
       trackerRef.current?.close();
+      trackerRef.current = null;
     };
   }, []);
 
   return (
     <main className="duel-shell">
-      <section className="arena" aria-label="67 duel arena">
+      <section className={"arena arena-" + round.phase} aria-label="67 duel arena">
         <video ref={videoRef} className="camera-feed" muted playsInline />
         <canvas ref={canvasRef} className="hand-overlay" />
         <div className="lane lane-left" />
@@ -411,11 +481,12 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
               <button type="button" onClick={chooseNewPlayers}><UserRound size={18} /> New players</button>
               <button type="button" onClick={leaveForHome}><Home size={18} /> Home</button>
             </div>
+            {errorMessage && <div className="result-notice" role="alert">{errorMessage}</div>}
           </div>
         )}
 
         {round.phase === "countdown" && <div className="countdown-blast">{countdownLeft ?? "GO"}</div>}
-        {errorMessage && <div className="error-toast">{errorMessage}</div>}
+        {errorMessage && round.phase !== "results" && <div className="error-toast" role="alert">{errorMessage}</div>}
 
         {round.phase !== "results" && (
           <div className="control-dock">
