@@ -1188,3 +1188,24 @@
     scroll-behavior: auto;
   }
 }
+
+
+.github-profile-link {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 2px solid #fff;
+  border-radius: 3px;
+  color: #fff;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.github-profile-link:hover,
+.github-profile-link:focus-visible {
+  background: #fde047;
+  color: #151515;
+  outline: none;
+}

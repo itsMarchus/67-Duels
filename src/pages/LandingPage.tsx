@@ -8,11 +8,13 @@ import {
   Cpu,
   Database,
   Gauge,
+  Github,
   Hand,
   History,
   Play,
   Repeat2,
-  Swords
+  Swords,
+  User
 } from "lucide-react";
 import { loadActivePlayers, saveActivePlayers, type ActivePlayers } from "../arcade/players";
 import { PlayerSetupDialog } from "../components/PlayerSetupDialog";
@@ -159,7 +161,20 @@ export function LandingPage() {
         </div>
       </section>
 
-      <footer className="site-footer"><strong>67 DUELS</strong><span>Built for freshies, powered by questionable hand coordination.</span></footer>
+      <footer className="site-footer">
+        <strong>67 DUELS</strong>
+        <a
+          className="github-profile-link"
+          href="https://github.com/itsMarchus"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Visit itsMarchus on GitHub"
+        >
+          <Github size={19} />
+          <User size={16} />
+          <span>itsMarchus</span>
+        </a>
+      </footer>
 
       {setupOpen && <PlayerSetupDialog errorMessage={setupError} initialPlayers={initialPlayers} onClose={() => setSetupOpen(false)} onSubmit={enterArena} />}
       {recordsOpen && <RecordsDialog onClose={() => setRecordsOpen(false)} />}
