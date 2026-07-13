@@ -1209,3 +1209,30 @@
   color: #151515;
   outline: none;
 }
+
+
+.camera-fps-note {
+  display: flex;
+  width: fit-content;
+  max-width: min(560px, 100%);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px auto 0;
+  padding: 8px 10px;
+  border-left: 4px solid #eab308;
+  background: rgba(254, 240, 138, 0.72);
+  color: #3f3f46;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.camera-fps-note svg {
+  flex: 0 0 auto;
+  color: #a16207;
+}
+
+.camera-fps-note strong {
+  color: #151515;
+}

@@ -14,6 +14,7 @@ import {
   Play,
   Repeat2,
   Swords,
+  TriangleAlert,
   User
 } from "lucide-react";
 import { loadActivePlayers, saveActivePlayers, type ActivePlayers } from "../arcade/players";
@@ -144,6 +145,10 @@ export function LandingPage() {
           </div>
 
           <div className="tech-footnote"><Hand size={22} /> No hand video leaves the browser. The model and scoring run locally on this machine.</div>
+          <div className="camera-fps-note" role="note">
+            <TriangleAlert size={17} aria-hidden="true" />
+            <span><strong>Best with a 60 FPS camera.</strong> 30 FPS is supported, but extreme speed may outrun the camera.</span>
+          </div>
         </div>
       </section>
 
