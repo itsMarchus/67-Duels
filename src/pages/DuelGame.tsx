@@ -70,7 +70,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
     right: new RepCounter("right", PARTY_FORGIVING_SETTINGS)
   });
 
-  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("requesting");
   const [trackerStatus, setTrackerStatus] = useState<TrackerStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string>();
   const [round, setRound] = useState<RoundState>(() => createInitialRoundState());
@@ -178,7 +178,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         video.srcObject = null;
         setCameraStatus("error");
         setTrackerStatus("idle");
-        setErrorMessage("The webcam disconnected. Reconnect it, then select Camera.");
+        setErrorMessage("The webcam disconnected. Reconnect it, then retry the camera.");
       }, { once: true });
     } catch (error) {
       if (requestId !== cameraRequestIdRef.current) {
@@ -196,6 +196,14 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       setErrorMessage(cameraErrorMessage(error));
     }
   }, []);
+
+  useEffect(() => {
+    const startupTimer = window.setTimeout(() => {
+      void startCamera();
+    }, 0);
+
+    return () => window.clearTimeout(startupTimer);
+  }, [startCamera]);
 
   const resetRound = useCallback(() => {
     for (const timer of countdownTimersRef.current) {
@@ -493,7 +501,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
             {cameraStatus !== "ready" ? (
               <button className="control-button primary" type="button" onClick={startCamera} disabled={cameraStatus === "requesting"}>
                 {cameraStatus === "requesting" ? <Video size={20} /> : <Camera size={20} />}
-                {cameraStatus === "requesting" ? "Opening" : "Camera"}
+                {cameraStatus === "requesting" ? "Opening" : cameraStatus === "error" ? "Retry camera" : "Camera"}
               </button>
             ) : (
               <button className="control-button primary" type="button" onClick={startDuel} disabled={!canStart}>
