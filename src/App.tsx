@@ -1,14 +1,19 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { loadActivePlayers } from "./arcade/players";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { LandingPage } from "./pages/LandingPage";
+import { preloadSharedHandLandmarker } from "./cv/handTracker";
 
 const DuelGame = lazy(() =>
   import("./pages/DuelGame").then((module) => ({ default: module.DuelGame }))
 );
 
 export default function App() {
+  useEffect(() => {
+    preloadSharedHandLandmarker();
+  }, []);
+
   return (
     <AppErrorBoundary>
       <BrowserRouter basename={import.meta.env.BASE_URL}>
