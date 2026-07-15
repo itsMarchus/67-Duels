@@ -40,6 +40,25 @@ const HAND_CONNECTIONS: Array<[number, number]> = [
   [0, 17]
 ];
 
+let sharedTrackerPromise: Promise<HandLandmarker> | null = null;
+
+export function preloadSharedHandLandmarker(
+  settings: DetectionSettings = PARTY_FORGIVING_SETTINGS
+): void {
+  if (!sharedTrackerPromise) {
+    sharedTrackerPromise = createHandLandmarker(settings);
+  }
+}
+
+export function getSharedHandLandmarker(
+  settings: DetectionSettings = PARTY_FORGIVING_SETTINGS
+): Promise<HandLandmarker> {
+  if (!sharedTrackerPromise) {
+    sharedTrackerPromise = createHandLandmarker(settings);
+  }
+  return sharedTrackerPromise;
+}
+
 export async function createHandLandmarker(
   settings: DetectionSettings = PARTY_FORGIVING_SETTINGS
 ): Promise<HandLandmarker> {

@@ -6,7 +6,7 @@ import { appendMatch, createMatchId, createMatchRecord } from "../arcade/records
 import { clearActivePlayers, type ActivePlayers } from "../arcade/players";
 import { cameraErrorMessage, cameraSupportError, stopMediaStream } from "../cv/camera";
 import { FrameMetricsTracker, shouldProcessVideoFrame } from "../cv/frameMetrics";
-import { createHandLandmarker, drawHandOverlay, observationsFromResult } from "../cv/handTracker";
+import { drawHandOverlay, getSharedHandLandmarker, observationsFromResult } from "../cv/handTracker";
 import { RepCounter } from "../cv/repCounter";
 import {
   PARTY_FORGIVING_SETTINGS,
@@ -126,7 +126,6 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
     setErrorMessage(undefined);
     stopMediaStream(streamRef.current);
     streamRef.current = null;
-    trackerRef.current?.close();
     trackerRef.current = null;
     video.srcObject = null;
 
@@ -155,9 +154,8 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       setCameraStatus("ready");
       setRound((current) => current.phase === "cameraSetup" ? { ...current, phase: "readyCheck" } : current);
 
-      const tracker = await createHandLandmarker(settingsRef.current);
+      const tracker = await getSharedHandLandmarker(settingsRef.current);
       if (requestId !== cameraRequestIdRef.current) {
-        tracker.close();
         stopMediaStream(stream);
         return;
       }
@@ -173,7 +171,6 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         cameraRequestIdRef.current += 1;
         stopMediaStream(stream);
         streamRef.current = null;
-        trackerRef.current?.close();
         trackerRef.current = null;
         video.srcObject = null;
         setCameraStatus("error");
@@ -188,7 +185,6 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
 
       stopMediaStream(stream);
       streamRef.current = null;
-      trackerRef.current?.close();
       trackerRef.current = null;
       video.srcObject = null;
       setCameraStatus("error");
@@ -424,7 +420,6 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       cameraRequestIdRef.current += 1;
       stopMediaStream(streamRef.current);
       streamRef.current = null;
-      trackerRef.current?.close();
       trackerRef.current = null;
     };
   }, []);
