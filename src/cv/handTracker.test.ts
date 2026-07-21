@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { HandLandmarkerResult } from "@mediapipe/tasks-vision";
+import type { HandObservation } from "./types";
 import {
   calculateCoverProjection,
+  drawHandOverlay,
   observationsFromResult,
   projectPointToCover
 } from "./handTracker";
@@ -65,5 +67,45 @@ describe("hand overlay cover projection", () => {
       offsetX: 0,
       offsetY: 0
     });
+  });
+});
+
+describe("hand overlay markers", () => {
+  it("draws one colored palm-center dot per observed hand", () => {
+    const arc = vi.fn();
+    const context = {
+      clearRect: vi.fn(),
+      beginPath: vi.fn(),
+      arc,
+      fill: vi.fn()
+    };
+    const canvas = {
+      width: 1000,
+      height: 500,
+      getContext: () => context
+    } as unknown as HTMLCanvasElement;
+    const landmarks = Array.from({ length: 21 }, () => ({ x: 0.25, y: 0.5, z: 0 }));
+
+    drawHandOverlay(
+      canvas,
+      1000,
+      500,
+      [{
+        landmarks,
+        handedness: "Left",
+        handednessConfidence: 1,
+        zone: "left"
+      }] as HandObservation[],
+      {
+        left: { playerId: "left", visibleHands: 1, handCenters: [], swapState: "unknown", confidence: 1 },
+        right: { playerId: "right", visibleHands: 0, handCenters: [], swapState: "unknown", confidence: 0 }
+      },
+      false
+    );
+
+    expect(arc).toHaveBeenCalledTimes(1);
+    expect(arc).toHaveBeenCalledWith(250, 250, 9, 0, Math.PI * 2);
+    expect(context.fill).toHaveBeenCalledTimes(1);
+    expect((context as { fillStyle?: string }).fillStyle).toBe("#f43f5e");
   });
 });

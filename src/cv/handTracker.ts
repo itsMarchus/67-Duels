@@ -11,6 +11,7 @@ import {
   type TrackingMetrics
 } from "./types";
 import { publicAssetUrl } from "../config/assets";
+import { centerOfPalmLandmarks } from "./zones";
 export { observationsFromResult } from "./handObservations";
 
 export const MODEL_PATH = publicAssetUrl("models/hand_landmarker.task");
@@ -57,29 +58,6 @@ export function projectPointToCover(point: Pick<Point3D, "x" | "y">, projection:
   };
 }
 
-const HAND_CONNECTIONS: Array<[number, number]> = [
-  [0, 1],
-  [1, 2],
-  [2, 3],
-  [3, 4],
-  [0, 5],
-  [5, 6],
-  [6, 7],
-  [7, 8],
-  [5, 9],
-  [9, 10],
-  [10, 11],
-  [11, 12],
-  [9, 13],
-  [13, 14],
-  [14, 15],
-  [15, 16],
-  [13, 17],
-  [17, 18],
-  [18, 19],
-  [19, 20],
-  [0, 17]
-];
 
 const sharedTrackerPromises = new Map<string, Promise<HandLandmarker>>();
 
@@ -154,38 +132,19 @@ export function drawHandOverlay(
     sourceWidth,
     sourceHeight
   );
-  context.lineWidth = Math.max(3, canvas.width * 0.003);
-  context.lineCap = "round";
-  context.lineJoin = "round";
+  const markerRadius = Math.max(7, Math.min(15, canvas.width * 0.009));
 
   for (const observation of observations) {
     const color = singlePlayerMode
       ? "#e11d48"
       : observation.zone === "left" ? "#f43f5e" : observation.zone === "right" ? "#2563eb" : "#f59e0b";
-    context.strokeStyle = color;
+    const palmCenter = centerOfPalmLandmarks(observation.landmarks);
+    const projectedCenter = projectPointToCover(palmCenter, projection);
+
     context.fillStyle = color;
-
-    for (const [start, end] of HAND_CONNECTIONS) {
-      const startPoint = observation.landmarks[start];
-      const endPoint = observation.landmarks[end];
-      if (!startPoint || !endPoint) {
-        continue;
-      }
-
-      const projectedStart = projectPointToCover(startPoint, projection);
-      const projectedEnd = projectPointToCover(endPoint, projection);
-      context.beginPath();
-      context.moveTo(projectedStart.x, projectedStart.y);
-      context.lineTo(projectedEnd.x, projectedEnd.y);
-      context.stroke();
-    }
-
-    for (const point of observation.landmarks) {
-      const projectedPoint = projectPointToCover(point, projection);
-      context.beginPath();
-      context.arc(projectedPoint.x, projectedPoint.y, Math.max(4, canvas.width * 0.004), 0, Math.PI * 2);
-      context.fill();
-    }
+    context.beginPath();
+    context.arc(projectedCenter.x, projectedCenter.y, markerRadius, 0, Math.PI * 2);
+    context.fill();
   }
 
   if (!debugOverlay) {
