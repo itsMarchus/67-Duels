@@ -1,14 +1,12 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
-export const SOLO_LEADERBOARD_LIMIT = 50;
-export const SOLO_HISTORY_LIMIT = 500;
+export const DEFAULT_REDIS_KEY_PREFIX = "67-duels";
+export const SOLO_LEADERBOARD_LIMIT = 100;
 export const SOLO_MAX_SCORE = 400;
 export const SOLO_ROUND_MIN_AGE_MS = 30_000;
 export const SOLO_ROUND_MAX_AGE_MS = 5 * 60_000;
 export const SOLO_TOKEN_TTL_SECONDS = 10 * 60;
 export const SOLO_RATE_LIMIT_PER_MINUTE = 60;
-export const SOLO_LEADERBOARD_KEY = "67-duels:solo:leaderboard:v1";
-export const SOLO_HISTORY_KEY = "67-duels:solo:history:v1";
 export const SOLO_COMPOSITE_MULTIPLIER = 10_000_000_000_000;
 
 export type SoloRoundClaims = {
@@ -143,27 +141,43 @@ export function redisConfigured(environment: NodeJS.ProcessEnv = process.env): b
   );
 }
 
-export function soloRateLimitKey(identifier: string, secret: string): string {
+export function redisKeyPrefix(environment: NodeJS.ProcessEnv = process.env): string {
+  return normalizeRedisKeyPrefix(environment.REDIS_KEY_PREFIX) ?? DEFAULT_REDIS_KEY_PREFIX;
+}
+
+export function soloRedisKeys(prefix = redisKeyPrefix()) {
+  const namespace = normalizeRedisKeyPrefix(prefix) ?? DEFAULT_REDIS_KEY_PREFIX;
+
+  return {
+    leaderboard: namespace + ":solo:leaderboard:v1",
+    used: (roundId: string) => namespace + ":solo:used:" + roundId,
+    rate: (digest: string) => namespace + ":solo:rate:" + digest
+  };
+}
+
+export function soloRateLimitKey(
+  identifier: string,
+  secret: string,
+  prefix = redisKeyPrefix()
+): string {
   const digest = createHmac("sha256", secret).update(identifier || "unknown").digest("hex").slice(0, 24);
-  return "67-duels:solo:rate:" + digest;
+  return soloRedisKeys(prefix).rate(digest);
 }
 
 export const SAVE_SOLO_SCORE_SCRIPT = `
-if redis.call("EXISTS", KEYS[3]) == 1 then
+if redis.call("EXISTS", KEYS[2]) == 1 then
   return {0, -1}
 end
 
-local attempts = redis.call("INCR", KEYS[4])
+local attempts = redis.call("INCR", KEYS[3])
 if attempts == 1 then
-  redis.call("EXPIRE", KEYS[4], 60)
+  redis.call("EXPIRE", KEYS[3], 60)
 end
-if attempts > tonumber(ARGV[7]) then
+if attempts > tonumber(ARGV[6]) then
   return {2, -1}
 end
 
-redis.call("SET", KEYS[3], "1", "EX", ARGV[4])
-redis.call("LPUSH", KEYS[2], ARGV[2])
-redis.call("LTRIM", KEYS[2], 0, tonumber(ARGV[6]) - 1)
+redis.call("SET", KEYS[2], "1", "EX", ARGV[4])
 redis.call("ZADD", KEYS[1], ARGV[1], ARGV[2])
 
 local total = redis.call("ZCARD", KEYS[1])
@@ -184,6 +198,15 @@ return {1, higher + 1}
 
 function signPayload(payload: string, secret: string): string {
   return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+function normalizeRedisKeyPrefix(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const prefix = value.trim();
+  return /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$/.test(prefix) ? prefix : undefined;
 }
 
 function normalizeSoloName(value: unknown): string | undefined {

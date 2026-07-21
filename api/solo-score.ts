@@ -2,9 +2,6 @@ import type { VercelRequest, VercelResponse } from "../server/vercelTypes";
 import { Redis } from "@upstash/redis";
 import {
   SAVE_SOLO_SCORE_SCRIPT,
-  SOLO_HISTORY_KEY,
-  SOLO_HISTORY_LIMIT,
-  SOLO_LEADERBOARD_KEY,
   SOLO_LEADERBOARD_LIMIT,
   SOLO_RATE_LIMIT_PER_MINUTE,
   SOLO_TOKEN_TTL_SECONDS,
@@ -12,6 +9,7 @@ import {
   createStoredSoloScore,
   redisConfigured,
   soloCompositeScore,
+  soloRedisKeys,
   soloRateLimitKey,
   validateSoloScoreRequest
 } from "../server/soloLeaderboard";
@@ -35,12 +33,12 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const entry = createStoredSoloScore(submission.claims.id, submission.name, submission.score, now);
     const member = JSON.stringify(entry);
     const redis = createRedis();
+    const keys = soloRedisKeys();
     const result = await redis.eval<string[], [number, number]>(
       SAVE_SOLO_SCORE_SCRIPT,
       [
-        SOLO_LEADERBOARD_KEY,
-        SOLO_HISTORY_KEY,
-        "67-duels:solo:used:" + submission.claims.id,
+        keys.leaderboard,
+        keys.used(submission.claims.id),
         soloRateLimitKey(clientIp(request), process.env.SOLO_SCORE_SECRET!)
       ],
       [
@@ -49,7 +47,6 @@ export default async function handler(request: VercelRequest, response: VercelRe
         String(entry.score),
         String(SOLO_TOKEN_TTL_SECONDS),
         String(SOLO_LEADERBOARD_LIMIT),
-        String(SOLO_HISTORY_LIMIT),
         String(SOLO_RATE_LIMIT_PER_MINUTE)
       ]
     );
@@ -63,11 +60,11 @@ export default async function handler(request: VercelRequest, response: VercelRe
     }
 
     const rank = Number(result[1]);
-    const madeTop50 = Number.isInteger(rank) && rank >= 1 && rank <= SOLO_LEADERBOARD_LIMIT;
+    const madeLeaderboard = Number.isInteger(rank) && rank >= 1 && rank <= SOLO_LEADERBOARD_LIMIT;
     return response.status(200).json({
       entry,
-      madeTop50,
-      rank: madeTop50 ? rank : null
+      madeLeaderboard,
+      rank: madeLeaderboard ? rank : null
     });
   } catch (error) {
     if (error instanceof SoloRequestError) {

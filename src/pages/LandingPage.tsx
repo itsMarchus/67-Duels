@@ -103,7 +103,7 @@ export function LandingPage() {
             <span className="section-kicker">THE EXTREMELY OFFICIAL RULES</span>
             <h2>How does one achieve 67 greatness?</h2>
             <div className="rule-list">
-              <Rule number="01" title="Choose your challenge" copy="Go Solo for the global Top 50 or bring a friend into Duel." />
+              <Rule number="01" title="Choose your challenge" copy="Go Solo for the global Top 100 or bring a friend into Duel." />
               <Rule number="02" title="Show both hands" copy="Solo uses the full frame; each Duel player keeps two hands in their lane." />
               <Rule number="03" title="Swap high and low" copy="Alternate your two hands like the 67 gesture. Clean swaps count as reps." />
               <Rule number="04" title="Survive 30 seconds" copy="Solo climbs the board; the highest Duel score wins the round." />

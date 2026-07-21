@@ -726,9 +726,9 @@ function SoloResultStatus({ state, onRetry }: { state: SoloSubmissionState; onRe
 
   if (state.status === "saved") {
     return (
-      <div className={"solo-result-status " + (state.result.madeTop50 ? "solo-result-ranked" : "")}>
+      <div className={"solo-result-status " + (state.result.madeLeaderboard ? "solo-result-ranked" : "")}>
         <Trophy size={17} />
-        {state.result.madeTop50 ? "GLOBAL RANK #" + state.result.rank : "SCORE SAVED - KEEP CLIMBING"}
+        {state.result.madeLeaderboard ? "GLOBAL RANK #" + state.result.rank : "TOP 100 MISSED - TRY AGAIN"}
       </div>
     );
   }

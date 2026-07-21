@@ -10,7 +10,7 @@
 
 67 Duels is a browser arcade game built for a college freshie event. MediaPipe tracks the player's hands locally and counts each clear high/low swap as a rep.
 
-- **Solo:** one player, two hands, and a public Redis-backed Top 50.
+- **Solo:** one player, two hands, and a public Redis-backed Top 100.
 - **Duel:** two players, four hands, split camera lanes, and browser-local match records.
 
 Camera frames and hand landmarks never leave the device. Solo sends only the entered name, final score, and server timestamp to the leaderboard.
@@ -18,7 +18,7 @@ Camera frames and hand landmarks never leave the device. Solo sends only the ent
 ## Features
 
 - Solo and two-player Duel modes with no account or login
-- Global Solo Top 50 powered by Upstash Redis and Vercel Functions
+- Global Solo Top 100 powered by Upstash Redis and Vercel Functions
 - Browser-local Duel leaderboard, match history, and JSON backups
 - MediaPipe Hand Landmarker tracking up to four hands in real time
 - Party-forgiving swap detection with an 80 ms debounce and brief-dropout grace
@@ -88,7 +88,7 @@ The fast-gesture settings use a normalized vertical threshold of `0.040`, an `80
 
 The **Arcade Records** dialog has three views:
 
-- **Solo Top 50:** public performances loaded from Redis
+- **Solo Top 100:** public performances loaded from Redis
 - **Duel Scores:** every local player appearance ranked independently
 - **Duel History:** local matchups, final scores, winners, and timestamps
 
@@ -98,19 +98,22 @@ Duel data is stored under `67-duels.arcade.v1` in `localStorage`. Active game na
 
 ## Redis And Environment Setup
 
-The project uses the Upstash Redis free tier through the Vercel Marketplace. At the time this was added, the free tier includes 500,000 commands per month and 256 MB of data. The score write uses one atomic Lua script, leaderboard reads are cached for 15 seconds, the public board is capped at 50 entries, and recent Solo history is capped at 500 entries.
+The project uses Upstash Redis through the Vercel Marketplace. The score write uses one atomic Lua script, leaderboard reads are cached for 15 seconds, and Redis retains only the 100 scores currently on the public board. After every accepted submission, entries below the Top 100 cutoff are deleted; there is no separate Solo history list.
+
+One Redis database can safely serve several projects. The database name, such as **Personal**, does not control isolation; each project must use a different key prefix. 67 Duels defaults to the `67-duels` namespace, producing keys such as `67-duels:solo:leaderboard:v1`. A different project could use `portfolio-app` without colliding.
 
 1. Open the Vercel project.
 2. Select **Storage** or **Marketplace**, install **Upstash Redis**, and connect it to this project.
 3. Confirm Vercel created `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
-4. Generate a private signing secret:
+4. Optionally set `REDIS_KEY_PREFIX=67-duels`. It can be omitted because `67-duels` is the safe default; use a different prefix in every other project.
+5. Generate a private signing secret:
 
    ```bash
    node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
    ```
 
-5. Add the output as `SOLO_SCORE_SECRET` for Development, Preview, and Production.
-6. Redeploy after adding the variables.
+6. Add the output as `SOLO_SCORE_SECRET` for Development, Preview, and Production.
+7. Redeploy after adding the variables.
 
 For local full-stack development, create `.env.local` from `.env.example` or pull the Vercel variables:
 
@@ -119,7 +122,7 @@ npx vercel env pull .env.local
 npx vercel dev
 ```
 
-These variables deliberately have no `VITE_` prefix, so Vite cannot place them in the browser bundle. `.env`, `.env.*`, and `.vercel/` are ignored by Git; only the empty `.env.example` template is committed.
+The credentials and signing secret deliberately have no `VITE_` prefix, so Vite cannot place them in the browser bundle. `REDIS_KEY_PREFIX` is also server-only. `.env`, `.env.*`, and `.vercel/` are ignored by Git; only `.env.example`, with blank credential placeholders and the safe default prefix, is committed.
 
 Never paste real Redis credentials into source files, client code, GitHub issues, screenshots, or variables beginning with `VITE_`.
 
@@ -135,7 +138,7 @@ Solo mode has no login, so a determined person can still forge browser-side game
 - Names are trimmed, length-limited, and checked server-side.
 - Redis credentials and the signing secret exist only inside Vercel Functions.
 
-The Top 50 is meant for friendly arcade competition, not prize-bearing or security-critical scoring.
+The Top 100 is meant for friendly arcade competition, not prize-bearing or security-critical scoring.
 
 ## Privacy
 

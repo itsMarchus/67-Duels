@@ -120,7 +120,7 @@ export function RecordsDialog({ onClose }: RecordsDialogProps) {
 
       <div className="record-tabs" role="tablist" aria-label="Arcade record views">
         <button className={tab === "solo" ? "active" : ""} type="button" role="tab" aria-selected={tab === "solo"} onClick={() => setTab("solo")}>
-          <Globe2 size={17} /> Solo Top 50
+          <Globe2 size={17} /> Solo Top 100
         </button>
         <button className={tab === "duel" ? "active" : ""} type="button" role="tab" aria-selected={tab === "duel"} onClick={() => setTab("duel")}>
           <Users size={17} /> Duel scores
@@ -157,7 +157,7 @@ export function RecordsDialog({ onClose }: RecordsDialogProps) {
               </button>
             </div>
             <span className="records-notice" role="status">
-              {soloStatus === "loading" ? "Loading the global board..." : soloNotice ?? "Top 50 Solo performances"}
+              {soloStatus === "loading" ? "Loading the global board..." : soloNotice ?? "Top 100 Solo performances"}
             </span>
           </>
         ) : (

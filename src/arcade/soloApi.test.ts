@@ -19,11 +19,16 @@ describe("solo API responses", () => {
   });
 
   it("validates score submission results", () => {
-    expect(parseSoloScoreResult({ entry, madeTop50: true, rank: 1 })).toEqual({
+    expect(parseSoloScoreResult({ entry, madeLeaderboard: true, rank: 100 })).toEqual({
       entry,
-      madeTop50: true,
-      rank: 1
+      madeLeaderboard: true,
+      rank: 100
     });
-    expect(() => parseSoloScoreResult({ entry, madeTop50: true, rank: 99 })).toThrow(/invalid response/);
+    expect(parseSoloScoreResult({ entry, madeLeaderboard: false, rank: null })).toEqual({
+      entry,
+      madeLeaderboard: false,
+      rank: null
+    });
+    expect(() => parseSoloScoreResult({ entry, madeLeaderboard: true, rank: 101 })).toThrow(/invalid response/);
   });
 });

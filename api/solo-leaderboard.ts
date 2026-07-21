@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from "../server/vercelTypes";
 import { Redis } from "@upstash/redis";
 import {
-  SOLO_LEADERBOARD_KEY,
   SOLO_LEADERBOARD_LIMIT,
   parseRankedSoloScores,
-  redisConfigured
+  redisConfigured,
+  soloRedisKeys
 } from "../server/soloLeaderboard";
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
@@ -23,7 +23,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
   try {
     const redis = createRedis();
     const values = await redis.zrange<string[]>(
-      SOLO_LEADERBOARD_KEY,
+      soloRedisKeys().leaderboard,
       0,
       SOLO_LEADERBOARD_LIMIT - 1,
       { rev: true }

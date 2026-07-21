@@ -1,4 +1,4 @@
-export const SOLO_LEADERBOARD_LIMIT = 50;
+export const SOLO_LEADERBOARD_LIMIT = 100;
 export const SOLO_MAX_SCORE = 400;
 
 export type SoloLeaderboardEntry = {
@@ -11,7 +11,7 @@ export type SoloLeaderboardEntry = {
 
 export type SoloScoreResult = {
   entry: Omit<SoloLeaderboardEntry, "rank">;
-  madeTop50: boolean;
+  madeLeaderboard: boolean;
   rank: number | null;
 };
 
@@ -84,7 +84,7 @@ export function parseSoloScoreResult(value: unknown): SoloScoreResult {
   const validRank = candidate.rank === null
     || (Number.isInteger(candidate.rank) && Number(candidate.rank) >= 1 && Number(candidate.rank) <= SOLO_LEADERBOARD_LIMIT);
 
-  if (!validEntry || typeof candidate.madeTop50 !== "boolean" || !validRank) {
+  if (!validEntry || typeof candidate.madeLeaderboard !== "boolean" || !validRank) {
     throw new Error("The score service returned an invalid response.");
   }
 

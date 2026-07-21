@@ -66,7 +66,7 @@ export function PlayerSetupDialog({ errorMessage, initialSession, onClose, onSub
       <div className="setup-mode-switch" role="group" aria-label="Game mode">
         <button type="button" className={mode === "solo" ? "active solo" : ""} aria-pressed={mode === "solo"} onClick={() => selectMode("solo")}>
           <UserRound size={20} /> Solo
-          <small>Global Top 50</small>
+          <small>Global Top 100</small>
         </button>
         <button type="button" className={mode === "duel" ? "active duel" : ""} aria-pressed={mode === "duel"} onClick={() => selectMode("duel")}>
           <Users size={20} /> Duel
