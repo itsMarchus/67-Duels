@@ -7,6 +7,7 @@ import {
   type DetectionSettings,
   type HandObservation,
   type PlayerTrackingState,
+  type Point3D,
   type TrackingMetrics
 } from "./types";
 import { publicAssetUrl } from "../config/assets";
@@ -14,6 +15,47 @@ export { observationsFromResult } from "./handObservations";
 
 export const MODEL_PATH = publicAssetUrl("models/hand_landmarker.task");
 export const WASM_PATH = publicAssetUrl("wasm");
+
+export type CoverProjection = {
+  renderedWidth: number;
+  renderedHeight: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+export function calculateCoverProjection(
+  canvasWidth: number,
+  canvasHeight: number,
+  sourceWidth: number,
+  sourceHeight: number
+): CoverProjection {
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return {
+      renderedWidth: canvasWidth,
+      renderedHeight: canvasHeight,
+      offsetX: 0,
+      offsetY: 0
+    };
+  }
+
+  const scale = Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+  const renderedWidth = sourceWidth * scale;
+  const renderedHeight = sourceHeight * scale;
+
+  return {
+    renderedWidth,
+    renderedHeight,
+    offsetX: (canvasWidth - renderedWidth) / 2,
+    offsetY: (canvasHeight - renderedHeight) / 2
+  };
+}
+
+export function projectPointToCover(point: Pick<Point3D, "x" | "y">, projection: CoverProjection) {
+  return {
+    x: projection.offsetX + point.x * projection.renderedWidth,
+    y: projection.offsetY + point.y * projection.renderedHeight
+  };
+}
 
 const HAND_CONNECTIONS: Array<[number, number]> = [
   [0, 1],
@@ -55,6 +97,8 @@ export async function createHandLandmarker(
 
 export function drawHandOverlay(
   canvas: HTMLCanvasElement,
+  sourceWidth: number,
+  sourceHeight: number,
   observations: HandObservation[],
   playerStates: Record<"left" | "right", PlayerTrackingState>,
   debugOverlay: boolean,
@@ -66,6 +110,12 @@ export function drawHandOverlay(
   }
 
   context.clearRect(0, 0, canvas.width, canvas.height);
+  const projection = calculateCoverProjection(
+    canvas.width,
+    canvas.height,
+    sourceWidth,
+    sourceHeight
+  );
   context.lineWidth = Math.max(3, canvas.width * 0.003);
   context.lineCap = "round";
   context.lineJoin = "round";
@@ -82,15 +132,18 @@ export function drawHandOverlay(
         continue;
       }
 
+      const projectedStart = projectPointToCover(startPoint, projection);
+      const projectedEnd = projectPointToCover(endPoint, projection);
       context.beginPath();
-      context.moveTo(startPoint.x * canvas.width, startPoint.y * canvas.height);
-      context.lineTo(endPoint.x * canvas.width, endPoint.y * canvas.height);
+      context.moveTo(projectedStart.x, projectedStart.y);
+      context.lineTo(projectedEnd.x, projectedEnd.y);
       context.stroke();
     }
 
     for (const point of observation.landmarks) {
+      const projectedPoint = projectPointToCover(point, projection);
       context.beginPath();
-      context.arc(point.x * canvas.width, point.y * canvas.height, Math.max(4, canvas.width * 0.004), 0, Math.PI * 2);
+      context.arc(projectedPoint.x, projectedPoint.y, Math.max(4, canvas.width * 0.004), 0, Math.PI * 2);
       context.fill();
     }
   }

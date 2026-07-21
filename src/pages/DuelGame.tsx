@@ -438,6 +438,8 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         if (frame.timestamp - lastOverlayDrawAt >= OVERLAY_RENDER_INTERVAL_MS) {
           drawHandOverlay(
             canvas,
+            video.videoWidth,
+            video.videoHeight,
             nextObservations,
             nextStates,
             settingsRef.current.debugOverlay,
