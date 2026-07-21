@@ -19,7 +19,7 @@ workerScope.onmessage = (event) => {
   const message = event.data;
 
   if (message.type === "initialize") {
-    void initialize(message.modelAssetUrl, message.wasmRootUrl, message.settings);
+    void initialize(message.modelAssetUrl, message.wasmRootUrl, message.settings, message.numHands);
     return;
   }
 
@@ -31,18 +31,19 @@ workerScope.onmessage = (event) => {
 async function initialize(
   modelAssetUrl: string,
   wasmRootUrl: string,
-  settings: DetectionSettings
+  settings: DetectionSettings,
+  numHands: number
 ): Promise<void> {
   try {
     const vision = await FilesetResolver.forVisionTasks(wasmRootUrl, true);
     let delegate: TrackingDelegate = "GPU";
 
     try {
-      tracker = await createTracker("GPU", vision, modelAssetUrl, settings);
+      tracker = await createTracker("GPU", vision, modelAssetUrl, settings, numHands);
     } catch (gpuError) {
       console.warn("MediaPipe worker GPU delegate failed, falling back to CPU", gpuError);
       delegate = "CPU";
-      tracker = await createTracker("CPU", vision, modelAssetUrl, settings);
+      tracker = await createTracker("CPU", vision, modelAssetUrl, settings, numHands);
     }
 
     workerScope.postMessage({ type: "ready", delegate });
@@ -79,7 +80,8 @@ function createTracker(
   delegate: TrackingDelegate,
   vision: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>,
   modelAssetUrl: string,
-  settings: DetectionSettings
+  settings: DetectionSettings,
+  numHands: number
 ): Promise<HandLandmarker> {
   return HandLandmarker.createFromOptions(vision, {
     baseOptions: {
@@ -87,7 +89,7 @@ function createTracker(
       delegate
     },
     runningMode: "VIDEO",
-    numHands: 4,
+    numHands,
     minHandDetectionConfidence: settings.modelDetectionConfidence,
     minHandPresenceConfidence: settings.modelPresenceConfidence,
     minTrackingConfidence: settings.modelTrackingConfidence

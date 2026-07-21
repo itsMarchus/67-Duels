@@ -25,16 +25,16 @@ export interface HandTrackingRuntime {
   close(): void;
 }
 
-export async function createHandTrackingRuntime(settings: DetectionSettings): Promise<HandTrackingRuntime> {
+export async function createHandTrackingRuntime(settings: DetectionSettings, numHands = 4): Promise<HandTrackingRuntime> {
   if (supportsWorkerTracking()) {
     try {
-      return await WorkerTrackingRuntime.create(settings);
+      return await WorkerTrackingRuntime.create(settings, numHands);
     } catch (error) {
       console.warn("MediaPipe worker setup failed, falling back to main-thread tracking", error);
     }
   }
 
-  return new MainThreadTrackingRuntime(await createHandLandmarker(settings));
+  return new MainThreadTrackingRuntime(await createHandLandmarker(settings, numHands));
 }
 
 export function supportsWorkerTracking(scope: typeof globalThis = globalThis): boolean {
@@ -89,11 +89,11 @@ class WorkerTrackingRuntime implements HandTrackingRuntime {
     this.worker.addEventListener("error", this.handleWorkerError);
   }
 
-  static async create(settings: DetectionSettings): Promise<WorkerTrackingRuntime> {
+  static async create(settings: DetectionSettings, numHands: number): Promise<WorkerTrackingRuntime> {
     const worker = new Worker(new URL("./handTracking.worker.ts", import.meta.url), { type: "module" });
 
     try {
-      const delegate = await initializeWorker(worker, settings);
+      const delegate = await initializeWorker(worker, settings, numHands);
       return new WorkerTrackingRuntime(worker, delegate);
     } catch (error) {
       worker.terminate();
@@ -183,7 +183,7 @@ class WorkerTrackingRuntime implements HandTrackingRuntime {
   }
 }
 
-function initializeWorker(worker: Worker, settings: DetectionSettings): Promise<TrackingDelegate> {
+function initializeWorker(worker: Worker, settings: DetectionSettings, numHands: number): Promise<TrackingDelegate> {
   return new Promise((resolve, reject) => {
     const timeout = window.setTimeout(() => {
       cleanup();
@@ -218,7 +218,8 @@ function initializeWorker(worker: Worker, settings: DetectionSettings): Promise<
       type: "initialize",
       modelAssetUrl: new URL(MODEL_PATH, window.location.href).href,
       wasmRootUrl: new URL(WASM_PATH, window.location.href).href,
-      settings
+      settings,
+      numHands
     };
     worker.postMessage(message);
   });

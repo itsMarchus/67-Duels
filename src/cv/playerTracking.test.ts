@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectLanePair, statesFromObservations } from "./playerTracking";
+import { selectLanePair, soloStateFromObservations, statesFromObservations } from "./playerTracking";
 import type { HandObservation } from "./types";
 
 function hand(
@@ -40,6 +40,23 @@ describe("player tracking", () => {
 
     expect(states.left).toMatchObject({ visibleHands: 2, invalidReason: undefined });
     expect(states.right).toMatchObject({ visibleHands: 2, invalidReason: undefined });
+  });
+
+  it("tracks a Solo player's hands across both Duel zones", () => {
+    const states = soloStateFromObservations([
+      hand("left", 0.9, 0.22, 0.25),
+      hand("right", 0.9, 0.78, 0.65)
+    ]);
+
+    expect(states.left).toMatchObject({
+      visibleHands: 2,
+      invalidReason: undefined,
+      handCenters: [
+        { x: 0.22, y: 0.25 },
+        { x: 0.78, y: 0.65 }
+      ]
+    });
+    expect(states.right.visibleHands).toBe(0);
   });
 
   it("selects the two outermost hands when a third hand crosses a lane boundary", () => {

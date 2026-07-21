@@ -836,3 +836,63 @@ button {
     font-size: 10px;
   }
 }
+
+.arena-solo .lane-left {
+  width: 100%;
+  background: linear-gradient(90deg, rgba(244, 63, 94, 0.14), transparent 52%, rgba(250, 204, 21, 0.12));
+}
+
+.arena-solo .lane-right,
+.arena-solo .center-split {
+  display: none;
+}
+
+.arena-solo .player-hud-left {
+  border-color: #151515;
+  box-shadow: 7px 7px 0 #facc15;
+}
+
+.solo-result-status {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 2px solid #151515;
+  background: #fff;
+  color: #151515;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.solo-result-ranked {
+  background: #bbf7d0;
+  box-shadow: 3px 3px 0 #151515;
+}
+
+.solo-result-error {
+  flex-wrap: wrap;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.solo-result-error button {
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 2px solid #151515;
+  background: #fff;
+  color: #151515;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .arena-solo .player-hud-left {
+    width: min(46vw, 250px);
+  }
+}

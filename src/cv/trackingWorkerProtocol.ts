@@ -8,6 +8,7 @@ export type TrackingWorkerRequest =
       modelAssetUrl: string;
       wasmRootUrl: string;
       settings: DetectionSettings;
+      numHands: number;
     }
   | {
       type: "frame";

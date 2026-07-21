@@ -5,28 +5,28 @@
 </p>
 
 <p align="center">
-  <strong>Two players. One camera. Thirty seconds of extremely serious 67 competition.</strong>
+  <strong>Solo leaderboard chase or side-by-side duel. One camera. Thirty seconds of extremely serious 67 competition.</strong>
 </p>
 
-67 Duels is a local browser arcade game built for a college freshie event. Two players stand side-by-side in one webcam feed while MediaPipe tracks their hands. Each clear high/low hand swap counts as a rep, and the player with the highest score after 30 seconds wins.
+67 Duels is a browser arcade game built for a college freshie event. MediaPipe tracks the player's hands locally and counts each clear high/low swap as a rep.
 
-The app includes a meme-filled landing page, player name entry, the live duel arena, match history, a local leaderboard, and JSON record backups. It has no backend and sends no camera footage to a server.
+- **Solo:** one player, two hands, and a public Redis-backed Top 50.
+- **Duel:** two players, four hands, split camera lanes, and browser-local match records.
+
+Camera frames and hand landmarks never leave the device. Solo sends only the entered name, final score, and server timestamp to the leaderboard.
 
 ## Features
 
-- Two-player split-camera arena with red and blue player lanes
+- Solo and two-player Duel modes with no account or login
+- Global Solo Top 50 powered by Upstash Redis and Vercel Functions
+- Browser-local Duel leaderboard, match history, and JSON backups
 - MediaPipe Hand Landmarker tracking up to four hands in real time
-- Party-forgiving swap detection with vertical thresholds and debounce protection
-- 3-second countdown and fixed 30-second rounds
-- Player names, rematches, winner results, and new-player flow
-- Independent leaderboard entries for every player appearance
-- Match history with scores, winners, and timestamps
-- Browser-local persistence for up to 500 completed matches
-- JSON export, validated import, and protected record clearing
-- Worker-based GPU-first MediaPipe inference with CPU and main-thread fallbacks
+- Party-forgiving swap detection with an 80 ms debounce and brief-dropout grace
+- Signed one-use Solo round tokens and server-side score validation
+- Worker-based GPU-first inference with CPU and main-thread fallbacks
 - Adaptive `960x540` to `640x360` camera performance profiles
-- Responsive landing page and dialogs for desktop and mobile
-- Debug overlay for landmarks, lane status, runtime mode, and measured FPS
+- Responsive desktop and mobile arena with safe-area support
+- Debug overlay for landmarks, runtime mode, inference latency, and measured FPS
 
 ## Quick Start
 
@@ -34,10 +34,11 @@ The app includes a meme-filled landing page, player name entry, the live duel ar
 
 - Node.js 18 or newer
 - npm
-- Chrome or Edge
-- A webcam with enough room for two players
+- Chrome, Edge, or another current browser
+- A webcam
+- Vercel CLI and Redis environment variables for the complete Solo API flow
 
-### Run locally
+### Frontend development
 
 ```bash
 git clone https://github.com/itsMarchus/67-Duels.git
@@ -46,21 +47,21 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173), allow camera access when prompted, and choose **Play Now**.
+Open the URL printed by Vite. Duel mode and all camera tracking work through the Vite development server. Solo leaderboard API routes require Vercel's local runtime:
 
-If port `5173` is busy, Vite will print the alternate local URL in the terminal.
+```bash
+npx vercel dev
+```
 
 ## How To Play
 
-1. Select **Play Now** on the landing page.
-2. Enter a name for Player 1 and Player 2.
-3. Enter the arena and allow webcam access; the camera and hand model start automatically.
-4. Stand on opposite sides of the center divider.
-5. Each player must keep two hands visible in their lane.
-6. Select **Start** and alternate one hand high while the other is low.
-7. Complete as many clear swaps as possible before the 30-second timer ends.
+1. Select **Play Now**.
+2. Choose **Solo** or **Duel** and enter the player names.
+3. Allow camera access; the camera and hand model start automatically.
+4. Select **Start** and alternate one hand high while the other is low.
+5. Complete as many clear swaps as possible in 30 seconds.
 
-After the result, players can rematch with the same names, choose new players, or return home. Every completed round is saved as a separate record.
+Solo tracks two hands anywhere in the camera and submits the final result to the global board. Duel assigns hands to the red and blue lanes and stores completed matches in the current browser.
 
 ## Computer Vision Pipeline
 
@@ -69,66 +70,92 @@ flowchart LR
     A[Webcam] --> B[Fresh-frame scheduler]
     B --> C[MediaPipe worker]
     C --> D[Mirror display coordinates]
-    D --> E[Assign hands to left or right lane]
+    D --> E[Select Solo hands or Duel zones]
     E --> F[Require two visible hands]
     F --> G[Classify high and low swap state]
     G --> H[Apply threshold and debounce]
     H --> I[Count rep and update score]
-    I --> J[Save completed match locally]
+    I --> J[Save local Duel or submit Solo result]
 ```
 
-The hand tracker runs in `VIDEO` mode with `numHands: 4`. Supported browsers run GPU-first MediaPipe inference in a module worker so the synchronous model does not block the interface. The worker falls back to CPU, and browsers without worker frame transfer retain the compatible main-thread path. Detected landmarks are mirrored to match the selfie-camera display, then assigned to a player according to their horizontal center. Scoring pauses whenever a player has fewer than two valid hands in their zone.
+The tracker uses MediaPipe Hand Landmarker in `VIDEO` mode with `numHands: 4`. Supported browsers run GPU-first inference in a module worker. The worker falls back to CPU, and browsers without worker frame transfer use the compatible main-thread path.
 
-Camera capture starts with the balanced `960x540` profile. Before a round, measured source FPS, processed FPS, and inference latency can trigger a one-way downgrade to the `640x360` performance profile. The visible arena remains full-screen while the smaller camera texture reduces decode, transfer, and preprocessing work.
+Camera capture begins at `960x540`. Before a round, measured source FPS, processed FPS, and inference latency can trigger a one-way downgrade to `640x360`. The visible arena stays full-screen while the smaller texture reduces processing work.
 
-A rep is recorded when the two hands alternate between these states:
-
-- Left hand high, right hand low
-- Right hand high, left hand low
-
-The fast-gesture settings use a normalized vertical threshold of `0.040`, an `80 ms` debounce, a `180 ms` missing-hand grace period, and MediaPipe detection/presence/tracking thresholds of `0.35 / 0.35 / 0.30`. These values live in `src/cv/types.ts`.
-
-### Fast-Gesture Diagnostics
-
-The fresh-frame scheduler never queues stale camera frames. Scoring consumes every completed inference result, while the landmark canvas renders at 20 Hz and React tracking state renders at 10 Hz. Select the bug button in the arena to show:
-
-- Processed CV FPS, observed decoded-camera FPS, and the track's reported FPS
-- Rolling average inference latency
-- Active worker/delegate, camera profile, and capture dimensions
-- Current detected-hand count plus busy and duplicate frame skips
-- Accepted reps, debounce rejections, and brief-dropout grace events for each player
-
-Brief hand loss preserves the last stable gesture for up to `180 ms`, but scoring remains observed-only: missing frames never create estimated extra reps.
+The fast-gesture settings use a normalized vertical threshold of `0.040`, an `80 ms` debounce, a `180 ms` missing-hand grace period, and detection/presence/tracking thresholds of `0.35 / 0.35 / 0.30`.
 
 ## Arcade Records
 
-The **Arcade Records** dialog has two views:
+The **Arcade Records** dialog has three views:
 
-- **Leaderboard:** every player appearance ranked by its individual round score
-- **Match History:** every completed matchup, final score, winner, and time played
+- **Solo Top 50:** public performances loaded from Redis
+- **Duel Scores:** every local player appearance ranked independently
+- **Duel History:** local matchups, final scores, winners, and timestamps
 
-Equal scores share the same rank, with newer performances displayed first. Reusing a name does not merge players; each appearance remains an independent entry.
+Equal scores share a displayed rank, with newer performances first. Repeated names remain independent because there are no accounts.
 
-Records are stored in the current browser profile under the versioned key `67-duels.arcade.v1`. Active player names use `sessionStorage`, while completed matches use `localStorage`.
+Duel data is stored under `67-duels.arcade.v1` in `localStorage`. Active game names and modes use `sessionStorage`. Export, import, and clear controls affect only local Duel records.
 
-Use **Export** before moving computers or clearing browser data. **Import** validates a 67 Duels JSON backup before replacing the current records.
+## Redis And Environment Setup
+
+The project uses the Upstash Redis free tier through the Vercel Marketplace. At the time this was added, the free tier includes 500,000 commands per month and 256 MB of data. The score write uses one atomic Lua script, leaderboard reads are cached for 15 seconds, the public board is capped at 50 entries, and recent Solo history is capped at 500 entries.
+
+1. Open the Vercel project.
+2. Select **Storage** or **Marketplace**, install **Upstash Redis**, and connect it to this project.
+3. Confirm Vercel created `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
+4. Generate a private signing secret:
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+   ```
+
+5. Add the output as `SOLO_SCORE_SECRET` for Development, Preview, and Production.
+6. Redeploy after adding the variables.
+
+For local full-stack development, create `.env.local` from `.env.example` or pull the Vercel variables:
+
+```bash
+npx vercel env pull .env.local
+npx vercel dev
+```
+
+These variables deliberately have no `VITE_` prefix, so Vite cannot place them in the browser bundle. `.env`, `.env.*`, and `.vercel/` are ignored by Git; only the empty `.env.example` template is committed.
+
+Never paste real Redis credentials into source files, client code, GitHub issues, screenshots, or variables beginning with `VITE_`.
+
+## Solo Submission Protection
+
+Solo mode has no login, so a determined person can still forge browser-side gameplay. The API adds practical event-grade protection without uploading video:
+
+- A signed token is issued before each Solo countdown.
+- Submissions are accepted only after a 30-second round and expire after five minutes.
+- Each token can be submitted once.
+- A short-lived hashed connection identifier limits submission bursts without storing the player's IP address.
+- Scores must be integers between 0 and 400.
+- Names are trimmed, length-limited, and checked server-side.
+- Redis credentials and the signing secret exist only inside Vercel Functions.
+
+The Top 50 is meant for friendly arcade competition, not prize-bearing or security-critical scoring.
 
 ## Privacy
 
-- Camera frames are processed locally in the browser.
-- The app has no accounts, analytics, API calls, or leaderboard server.
-- Video and hand landmarks are not uploaded or saved.
-- Only entered names, scores, winners, and match timestamps are persisted.
+- Camera frames and landmarks are processed locally.
+- Video, images, and landmarks are never uploaded or stored.
+- Duel records remain in the browser.
+- Solo submits only the player name, final score, and timestamp.
+- The app has no accounts and does not require email or other identity data.
 
 ## Project Structure
 
 ```text
+api/            Vercel Function endpoints for Solo rounds and scores
+server/         Token validation and Redis leaderboard helpers
 src/
-  arcade/       Player session and local record storage
+  arcade/       Active sessions, client API, and local Duel records
   components/   Player setup and records dialogs
   cv/           MediaPipe loading, zones, tracking, and rep detection
   game/         Round state and timer logic
-  pages/        Landing page and duel arena
+  pages/        Landing page and camera arena
 public/
   memes/        Local landing-page meme assets
   models/       MediaPipe hand landmarker model
@@ -138,40 +165,36 @@ public/
 ## Commands
 
 ```bash
-npm run dev       # Start the local development server
-npm run build     # Type-check and create a production build
-npm run preview   # Preview the production build locally
+npm run dev       # Start the frontend-only Vite server
+npx vercel dev    # Start frontend plus Vercel Functions
+npm run build     # Type-check client/API code and build production assets
+npm run preview   # Preview static production assets
 npm test          # Run Vitest in watch mode
-npm run test:run  # Run the complete test suite once
+npm run test:run  # Run all tests once
 npm run check     # Run tests and the production build release gate
 ```
 
-The tests cover lane assignment, hand tracking state, swap classification, debounce behavior, round timing, player names, match persistence, record pruning, leaderboard ties, and winner labels.
-
-## Custom Meme Assets
-
-Landing-page images live in `public/memes/`. The duel arena can also load optional meme images listed in `public/memes/manifest.json`; when the manifest is empty, the arena uses generated text stickers.
-
 ## Production Deployment
 
-67 Duels is a static application. Run the release gate and upload the generated `dist/` directory:
+The camera and computer vision remain client-side, while three lightweight Vercel Functions handle Solo tokens, score submission, and leaderboard reads.
+
+Before deployment:
 
 ```bash
 npm ci
 npm run check
 ```
 
-No application or inference server is required. Static hosting still needs to deliver the files over HTTPS because browsers block webcam access on insecure non-localhost pages.
+Then confirm the Upstash integration and `SOLO_SCORE_SECRET` exist in the Vercel project's Production environment. Deploy from the intended Git branch and test both modes over HTTPS.
 
-Deployment support included in this repository:
+Deployment support included here:
 
-- `vercel.json` provides Vercel SPA rewrites and camera-focused security headers.
-- `public/_redirects` and `public/_headers` provide the equivalent Netlify configuration.
-- GitHub Actions runs all tests and the production build on pull requests and pushes to `main`.
-- Public assets and React Router honor Vite's base path. For subpath hosting, build with a matching base, such as `npm run build -- --base=/67-Duels/`.
-- Other static hosts must serve `index.html` for unknown application routes such as `/play`.
+- `vercel.json` provides SPA rewrites, camera permissions, and security headers.
+- `api/*.ts` contains the Vercel Functions.
+- `public/_redirects` and `public/_headers` support static-only hosts, where Duel works but the Solo API does not.
+- Public assets and React Router honor Vite's base path.
 
-Before the event, open the deployed HTTPS URL on the actual arcade laptop, grant camera permission, complete a two-player round, reload the page, and confirm the record remains. Keep one browser profile for the whole event and export records periodically as a backup.
+Before the event, test the deployed URL on the actual laptop and at least one phone. Complete a Solo run, confirm its global rank appears, complete a Duel, reload, and confirm the local record remains.
 
 ## Built With
 
@@ -179,8 +202,10 @@ Before the event, open the deployed HTTPS URL on the actual arcade laptop, grant
 - TypeScript
 - Vite
 - MediaPipe Tasks Vision
+- Vercel Functions
+- Upstash Redis
 - React Router
 - Lucide React
 - Vitest
 
-MediaPipe reference: [Hand Landmarker for Web](https://developers.google.com/mediapipe/solutions/vision/hand_landmarker/web_js)
+References: [MediaPipe Hand Landmarker](https://developers.google.com/mediapipe/solutions/vision/hand_landmarker/web_js), [Upstash Redis TypeScript SDK](https://upstash.com/docs/redis/sdks/ts/getstarted), [Vercel Redis integrations](https://vercel.com/docs/redis)

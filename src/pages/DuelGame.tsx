@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bug, Camera, Home, Play, RotateCcw, UserRound, Video } from "lucide-react";
+import { Bug, Camera, CloudUpload, Home, Play, RotateCcw, Trophy, UserRound, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { appendMatch, createMatchId, createMatchRecord } from "../arcade/records";
-import { clearActivePlayers, type ActivePlayers } from "../arcade/players";
+import type { ActivePlayers } from "../arcade/players";
+import { requestSoloRound, submitSoloScore, type SoloScoreResult } from "../arcade/soloApi";
+import { clearActiveGameSession, type ActiveGameSession } from "../arcade/session";
 import { cameraErrorMessage, cameraSupportError, stopMediaStream } from "../cv/camera";
 import { FrameMetricsTracker, shouldProcessVideoFrame } from "../cv/frameMetrics";
 import { drawHandOverlay } from "../cv/handTracker";
@@ -24,11 +26,16 @@ import {
   type RoundState
 } from "../cv/types";
 import { buildPlayerTrackingState } from "../cv/zones";
-import { statesFromObservations } from "../cv/playerTracking";
+import { soloStateFromObservations, statesFromObservations } from "../cv/playerTracking";
 import { createInitialRoundState, scoreRep, startCountdown, startPlaying, tickRound } from "../game/round";
 
 type CameraStatus = "idle" | "requesting" | "ready" | "error";
 type TrackerStatus = "idle" | "loading" | "ready" | "error";
+type SoloSubmissionState =
+  | { status: "idle" }
+  | { status: "submitting" }
+  | { status: "saved"; result: SoloScoreResult }
+  | { status: "error"; message: string };
 
 const COUNTDOWN_SECONDS = 3;
 const TRACKING_RENDER_INTERVAL_MS = 100;
@@ -58,8 +65,12 @@ const STICKER_LAYOUT = [
   { top: "42%", right: "2%", rotate: "4deg" }
 ];
 
-export function DuelGame({ players }: { players: ActivePlayers }) {
+export function DuelGame({ session }: { session: ActiveGameSession }) {
   const navigate = useNavigate();
+  const soloMode = session.mode === "solo";
+  const players: ActivePlayers = session.mode === "duel"
+    ? session.players
+    : { left: session.player, right: "" };
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const trackerRef = useRef<HandTrackingRuntime | null>(null);
@@ -78,6 +89,8 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   const countdownTimersRef = useRef<number[]>([]);
   const activeMatchIdRef = useRef<string>();
   const savedMatchIdRef = useRef<string>();
+  const soloRoundTokenRef = useRef<string>();
+  const submittedSoloTokenRef = useRef<string>();
   const countersRef = useRef<Record<PlayerId, RepCounter>>({
     left: new RepCounter("left", PARTY_FORGIVING_SETTINGS),
     right: new RepCounter("right", PARTY_FORGIVING_SETTINGS)
@@ -91,13 +104,18 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   const [playerStates, setPlayerStates] = useState<Record<PlayerId, PlayerTrackingState>>(EMPTY_TRACKING);
   const [settings, setSettings] = useState<DetectionSettings>(PARTY_FORGIVING_SETTINGS);
   const [memeTick, setMemeTick] = useState(0);
+  const [roundPreparing, setRoundPreparing] = useState(false);
+  const [soloSubmission, setSoloSubmission] = useState<SoloSubmissionState>({ status: "idle" });
 
   roundRef.current = round;
   settingsRef.current = settings;
 
-  const bothPlayersReady = playerStates.left.visibleHands >= 2 && playerStates.right.visibleHands >= 2;
+  const playersReady = soloMode
+    ? playerStates.left.visibleHands >= 2
+    : playerStates.left.visibleHands >= 2 && playerStates.right.visibleHands >= 2;
   const canStart = cameraStatus === "ready"
     && trackerStatus === "ready"
+    && !roundPreparing
     && round.phase !== "countdown"
     && round.phase !== "playing";
 
@@ -105,11 +123,12 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
     if (cameraStatus === "idle") return "camera offline";
     if (cameraStatus === "requesting") return "camera waking up";
     if (trackerStatus === "loading") return "hand model loading";
+    if (roundPreparing) return "checking leaderboard";
     if (round.phase === "countdown") return "get set";
     if (round.phase === "playing") return "67 now";
     if (round.phase === "results") return "round complete";
-    return bothPlayersReady ? "both players locked" : "show both hands";
-  }, [bothPlayersReady, cameraStatus, round.phase, trackerStatus]);
+    return playersReady ? (soloMode ? "player locked" : "both players locked") : "show both hands";
+  }, [cameraStatus, playersReady, round.phase, roundPreparing, soloMode, trackerStatus]);
 
   const enablePerformanceProfile = useCallback(async () => {
     if (adaptationAttemptedRef.current) {
@@ -206,7 +225,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       setCameraStatus("ready");
       setRound((current) => current.phase === "cameraSetup" ? { ...current, phase: "readyCheck" } : current);
 
-      const tracker = await createHandTrackingRuntime(settingsRef.current);
+      const tracker = await createHandTrackingRuntime(settingsRef.current, soloMode ? 2 : 4);
       if (requestId !== cameraRequestIdRef.current) {
         tracker.close();
         stopMediaStream(stream);
@@ -246,7 +265,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       setTrackerStatus("error");
       setErrorMessage(cameraErrorMessage(error));
     }
-  }, []);
+  }, [soloMode]);
 
   useEffect(() => {
     const startupTimer = window.setTimeout(() => {
@@ -262,40 +281,57 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
     }
     countdownTimersRef.current = [];
     activeMatchIdRef.current = undefined;
+    soloRoundTokenRef.current = undefined;
+    submittedSoloTokenRef.current = undefined;
     countersRef.current.left.reset();
     countersRef.current.right.reset();
+    setSoloSubmission({ status: "idle" });
     setCountdownLeft(null);
     setRound(cameraStatus === "ready" ? { ...createInitialRoundState(), phase: "readyCheck" } : createInitialRoundState());
   }, [cameraStatus]);
 
-  const startDuel = useCallback(() => {
+  const startDuel = useCallback(async () => {
     if (!canStart) {
       return;
     }
 
-    resetRound();
-    activeMatchIdRef.current = createMatchId();
-    savedMatchIdRef.current = undefined;
-    countersRef.current.left.reset();
-    countersRef.current.right.reset();
-    const now = performance.now();
-    setCountdownLeft(COUNTDOWN_SECONDS);
-    setRound(startCountdown(createInitialRoundState(), now));
+    setRoundPreparing(true);
+    setErrorMessage(undefined);
+    try {
+      const soloToken = soloMode ? await requestSoloRound() : undefined;
+      resetRound();
+      if (soloToken) {
+        soloRoundTokenRef.current = soloToken;
+      } else {
+        activeMatchIdRef.current = createMatchId();
+        savedMatchIdRef.current = undefined;
+      }
 
-    countdownTimersRef.current = [1, 2, 3].map((second) =>
-      window.setTimeout(() => {
-        const remaining = COUNTDOWN_SECONDS - second;
-        setCountdownLeft(remaining > 0 ? remaining : null);
-        if (remaining === 0) {
-          setRound((current) => startPlaying(current, performance.now()));
-        }
-      }, second * 1000)
-    );
-  }, [canStart, resetRound]);
+      countersRef.current.left.reset();
+      countersRef.current.right.reset();
+      const now = performance.now();
+      setCountdownLeft(COUNTDOWN_SECONDS);
+      setRound(startCountdown(createInitialRoundState(), now));
+
+      countdownTimersRef.current = [1, 2, 3].map((second) =>
+        window.setTimeout(() => {
+          const remaining = COUNTDOWN_SECONDS - second;
+          setCountdownLeft(remaining > 0 ? remaining : null);
+          if (remaining === 0) {
+            setRound((current) => startPlaying(current, performance.now()));
+          }
+        }, second * 1000)
+      );
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "The Solo leaderboard is unavailable right now.");
+    } finally {
+      setRoundPreparing(false);
+    }
+  }, [canStart, resetRound, soloMode]);
 
   const leaveForHome = useCallback(() => {
     const active = roundRef.current.phase === "playing" || roundRef.current.phase === "countdown";
-    if (active && !window.confirm("Leave this active duel? The unfinished round will not be recorded.")) {
+    if (active && !window.confirm("Leave this active round? The unfinished run will not be recorded.")) {
       return;
     }
 
@@ -303,12 +339,49 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   }, [navigate]);
 
   const chooseNewPlayers = useCallback(() => {
-    clearActivePlayers();
+    clearActiveGameSession();
     navigate("/?setup=1");
   }, [navigate]);
 
+  const uploadSoloResult = useCallback(async (token: string, score: number) => {
+    submittedSoloTokenRef.current = token;
+    setSoloSubmission({ status: "submitting" });
+    try {
+      const result = await submitSoloScore(token, players.left, score);
+      setSoloSubmission({ status: "saved", result });
+    } catch (error) {
+      setSoloSubmission({
+        status: "error",
+        message: error instanceof Error ? error.message : "The score could not reach the global leaderboard."
+      });
+    }
+  }, [players.left]);
+
   useEffect(() => {
-    if (round.phase !== "results" || !round.winner || !activeMatchIdRef.current) {
+    if (!soloMode || round.phase !== "results" || !soloRoundTokenRef.current) {
+      return;
+    }
+
+    const token = soloRoundTokenRef.current;
+    if (submittedSoloTokenRef.current === token) {
+      return;
+    }
+
+    void uploadSoloResult(token, round.scores.left);
+  }, [round.phase, round.scores.left, soloMode, uploadSoloResult]);
+
+  const retrySoloUpload = useCallback(() => {
+    const token = soloRoundTokenRef.current;
+    if (!token) {
+      return;
+    }
+
+    submittedSoloTokenRef.current = undefined;
+    void uploadSoloResult(token, round.scores.left);
+  }, [round.scores.left, uploadSoloResult]);
+
+  useEffect(() => {
+    if (soloMode || round.phase !== "results" || !round.winner || !activeMatchIdRef.current) {
       return;
     }
 
@@ -323,7 +396,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       setErrorMessage("Round complete, but this browser could not save the match record.");
     }
     savedMatchIdRef.current = matchId;
-  }, [players, round.phase, round.scores, round.winner]);
+  }, [players, round.phase, round.scores, round.winner, soloMode]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setMemeTick((value) => value + 1), 1800);
@@ -391,11 +464,14 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         }
 
         const nextObservations = frame.observations;
-        const rawStates = statesFromObservations(nextObservations);
+        const rawStates = soloMode
+          ? soloStateFromObservations(nextObservations)
+          : statesFromObservations(nextObservations);
         const currentRound = roundRef.current;
 
         if (currentRound.phase === "playing") {
-          for (const playerId of ["left", "right"] as const) {
+          const scoringPlayers: PlayerId[] = soloMode ? ["left"] : ["left", "right"];
+          for (const playerId of scoringPlayers) {
             const counter = countersRef.current[playerId];
             const event = counter.update(rawStates[playerId].handCenters, frame.timestamp);
             if (event) {
@@ -443,7 +519,8 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
             nextObservations,
             nextStates,
             settingsRef.current.debugOverlay,
-            metrics
+            metrics,
+            soloMode
           );
           lastOverlayDrawAt = frame.timestamp;
         }
@@ -486,7 +563,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         window.cancelAnimationFrame(fallbackFrameRef.current);
       }
     };
-  }, [enablePerformanceProfile, trackerStatus]);
+  }, [enablePerformanceProfile, soloMode, trackerStatus]);
 
   useEffect(() => {
     if (round.phase !== "playing") {
@@ -520,7 +597,10 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
 
   return (
     <main className="duel-shell">
-      <section className={"arena arena-" + round.phase} aria-label="67 duel arena">
+      <section
+        className={"arena arena-" + round.phase + (soloMode ? " arena-solo" : "")}
+        aria-label={soloMode ? "67 solo arena" : "67 duel arena"}
+      >
         <video ref={videoRef} className="camera-feed" muted playsInline />
         <canvas ref={canvasRef} className="hand-overlay" />
         <div className="lane lane-left" />
@@ -541,7 +621,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         <header className="top-bar">
           <div className="brand-lockup">
             <span className="brand-number">67</span>
-            <span className="brand-text">DUELS</span>
+            <span className="brand-text">{soloMode ? "SOLO" : "DUELS"}</span>
           </div>
           <div className="status-pill">{statusText}</div>
           <div className="game-nav-actions">
@@ -560,8 +640,8 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
           </div>
         </header>
 
-        <PlayerHud side="left" name={players.left} score={round.scores.left} state={playerStates.left} />
-        <PlayerHud side="right" name={players.right} score={round.scores.right} state={playerStates.right} />
+        <PlayerHud side="left" name={players.left} score={round.scores.left} state={playerStates.left} solo={soloMode} />
+        {!soloMode && <PlayerHud side="right" name={players.right} score={round.scores.right} state={playerStates.right} />}
 
         <div className="timer-stack">
           <div className="timer-label">{round.phase === "playing" ? "SECONDS" : "ROUND"}</div>
@@ -571,11 +651,12 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
 
         {round.phase === "results" && (
           <div className="winner-banner">
-            <span>{winnerText(round.winner, players)}</span>
-            <strong>{round.scores.left} - {round.scores.right}</strong>
+            <span>{soloMode ? players.left.toUpperCase() + " SCORED" : winnerText(round.winner, players)}</span>
+            <strong>{soloMode ? round.scores.left + " REPS" : round.scores.left + " - " + round.scores.right}</strong>
+            {soloMode && <SoloResultStatus state={soloSubmission} onRetry={retrySoloUpload} />}
             <div className="result-actions">
               <button type="button" onClick={startDuel} disabled={!canStart}><RotateCcw size={18} /> Rematch</button>
-              <button type="button" onClick={chooseNewPlayers}><UserRound size={18} /> New players</button>
+              <button type="button" onClick={chooseNewPlayers}><UserRound size={18} /> {soloMode ? "New player" : "New players"}</button>
               <button type="button" onClick={leaveForHome}><Home size={18} /> Home</button>
             </div>
             {errorMessage && <div className="result-notice" role="alert">{errorMessage}</div>}
@@ -594,11 +675,11 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
               </button>
             ) : (
               <button className="control-button primary" type="button" onClick={startDuel} disabled={!canStart}>
-                <Play size={20} />
-                Start
+                {roundPreparing ? <CloudUpload size={20} /> : <Play size={20} />}
+                {roundPreparing ? "Connecting" : "Start"}
               </button>
             )}
-            <button className="control-button" type="button" onClick={resetRound}>
+            <button className="control-button" type="button" onClick={resetRound} disabled={roundPreparing}>
               <RotateCcw size={20} />
               Reset
             </button>
@@ -609,9 +690,21 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   );
 }
 
-function PlayerHud({ side, name, score, state }: { side: PlayerId; name: string; score: number; state: PlayerTrackingState }) {
+function PlayerHud({
+  side,
+  name,
+  score,
+  state,
+  solo = false
+}: {
+  side: PlayerId;
+  name: string;
+  score: number;
+  state: PlayerTrackingState;
+  solo?: boolean;
+}) {
   const ready = state.visibleHands >= 2;
-  const lane = side === "left" ? "PLAYER 1 / LEFT" : "PLAYER 2 / RIGHT";
+  const lane = solo ? "SOLO RUN" : side === "left" ? "PLAYER 1 / LEFT" : "PLAYER 2 / RIGHT";
 
   return (
     <aside className={"player-hud player-hud-" + side}>
@@ -624,6 +717,32 @@ function PlayerHud({ side, name, score, state }: { side: PlayerId; name: string;
       <div className="swap-state">{state.swapState.replace("-", " ").toUpperCase()}</div>
     </aside>
   );
+}
+
+function SoloResultStatus({ state, onRetry }: { state: SoloSubmissionState; onRetry: () => void }) {
+  if (state.status === "submitting") {
+    return <div className="solo-result-status"><CloudUpload size={17} /> Uploading to the global board...</div>;
+  }
+
+  if (state.status === "saved") {
+    return (
+      <div className={"solo-result-status " + (state.result.madeTop50 ? "solo-result-ranked" : "")}>
+        <Trophy size={17} />
+        {state.result.madeTop50 ? "GLOBAL RANK #" + state.result.rank : "SCORE SAVED - KEEP CLIMBING"}
+      </div>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <div className="solo-result-status solo-result-error" role="alert">
+        <span>{state.message}</span>
+        <button type="button" onClick={onRetry}>Retry upload</button>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 export function winnerText(winner: RoundState["winner"], players: ActivePlayers): string {

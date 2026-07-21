@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { loadActivePlayers } from "./arcade/players";
+import { loadActiveGameSession } from "./arcade/session";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { LandingPage } from "./pages/LandingPage";
 
@@ -25,8 +25,8 @@ export default function App() {
 }
 
 function PlayRoute() {
-  const players = loadActivePlayers();
-  return players ? <DuelGame players={players} /> : <Navigate to="/?setup=1" replace />;
+  const session = loadActiveGameSession();
+  return session ? <DuelGame session={session} /> : <Navigate to="/?setup=1" replace />;
 }
 
 function RouteLoading() {

@@ -17,19 +17,23 @@ import {
   TriangleAlert,
   User
 } from "lucide-react";
-import { loadActivePlayers, saveActivePlayers, type ActivePlayers } from "../arcade/players";
+import {
+  loadActiveGameSession,
+  saveActiveGameSession,
+  type ActiveGameSession
+} from "../arcade/session";
 import { PlayerSetupDialog } from "../components/PlayerSetupDialog";
 import { RecordsDialog } from "../components/RecordsDialog";
 import { publicAssetUrl } from "../config/assets";
 import "./LandingPage.css";
 
 const TECH_STEPS = [
-  { icon: Camera, label: "Webcam", copy: "One mirrored camera sees both players." },
+  { icon: Camera, label: "Webcam", copy: "One mirrored camera sees Solo or both Duel players." },
   { icon: Cpu, label: "MediaPipe", copy: "The model tracks up to four hands." },
-  { icon: Columns2, label: "Player zones", copy: "Hand centers enter the red or blue lane." },
+  { icon: Columns2, label: "Game mode", copy: "Solo uses the full frame; Duel splits red and blue." },
   { icon: Repeat2, label: "Swap detector", copy: "High and low hand positions must alternate." },
   { icon: Gauge, label: "Rep counter", copy: "Thresholds and debounce reject jitter." },
-  { icon: Database, label: "Arcade records", copy: "Final scores stay on this browser." }
+  { icon: Database, label: "Arcade records", copy: "Solo scores go global; Duel history stays local." }
 ];
 
 export function LandingPage() {
@@ -39,7 +43,7 @@ export function LandingPage() {
   const [setupOpen, setSetupOpen] = useState(requestedSetup);
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [setupError, setSetupError] = useState<string>();
-  const initialPlayers = useMemo(() => loadActivePlayers(), [setupOpen]);
+  const initialSession = useMemo(() => loadActiveGameSession(), [setupOpen]);
 
   useEffect(() => {
     if (requestedSetup) {
@@ -48,9 +52,9 @@ export function LandingPage() {
     }
   }, [navigate, requestedSetup]);
 
-  const enterArena = (players: ActivePlayers) => {
+  const enterArena = (session: ActiveGameSession) => {
     try {
-      saveActivePlayers(players);
+      saveActiveGameSession(session);
       setSetupError(undefined);
       navigate("/play");
     } catch {
@@ -71,15 +75,15 @@ export function LandingPage() {
 
       <section className="landing-hero" id="top">
         <div className="hero-stage">
-          <span className="hero-sticker hero-sticker-left">TWO PLAYERS</span>
-          <span className="hero-sticker hero-sticker-right">ONE CAMERA</span>
+          <span className="hero-sticker hero-sticker-left">SOLO OR DUEL</span>
+          <span className="hero-sticker hero-sticker-right">ZERO LOGINS</span>
           <img className="inventor-meme" src={publicAssetUrl("memes/67_inventor_disorted_img.jpg")} alt="The distorted 67 inventor meme" />
 
           <div className="hero-copy">
             <span className="hero-kicker"><Swords size={20} /> FRESHIE ARCADE CHALLENGE</span>
             <h1><span>67</span> Duels</h1>
             <div className="minecraft-splash">67 in the big 2026?!</div>
-            <p>Two players. Four tracked hands. Thirty seconds of deeply serious academic competition.</p>
+            <p>One or two players. Hand-tracked chaos. Thirty seconds to make the leaderboard regret existing.</p>
             <div className="hero-actions">
               <button className="landing-button landing-button-primary" type="button" onClick={() => setSetupOpen(true)}>
                 <Play size={21} fill="currentColor" /> Play now
@@ -99,10 +103,10 @@ export function LandingPage() {
             <span className="section-kicker">THE EXTREMELY OFFICIAL RULES</span>
             <h2>How does one achieve 67 greatness?</h2>
             <div className="rule-list">
-              <Rule number="01" title="Pick a side" copy="Stand together in one camera: Player 1 on red, Player 2 on blue." />
-              <Rule number="02" title="Show both hands" copy="Each player needs two visible hands before their lane locks in." />
+              <Rule number="01" title="Choose your challenge" copy="Go Solo for the global Top 50 or bring a friend into Duel." />
+              <Rule number="02" title="Show both hands" copy="Solo uses the full frame; each Duel player keeps two hands in their lane." />
               <Rule number="03" title="Swap high and low" copy="Alternate your two hands like the 67 gesture. Clean swaps count as reps." />
-              <Rule number="04" title="Survive 30 seconds" copy="The player with the most counted swaps takes the round." />
+              <Rule number="04" title="Survive 30 seconds" copy="Solo climbs the board; the highest Duel score wins the round." />
             </div>
           </div>
 
@@ -144,7 +148,7 @@ export function LandingPage() {
             })}
           </div>
 
-          <div className="tech-footnote"><Hand size={22} /> No hand video leaves the browser. The model and scoring run locally on this machine.</div>
+          <div className="tech-footnote"><Hand size={22} /> No hand video leaves the browser. Only Solo names and final scores are sent to the global leaderboard.</div>
           <div className="camera-fps-note" role="note">
             <TriangleAlert size={17} aria-hidden="true" />
             <span><strong>Best with a 60 FPS camera.</strong> 30 FPS is supported, but extreme speed may outrun the camera.</span>
@@ -159,7 +163,7 @@ export function LandingPage() {
             <span className="section-kicker">THE LEADERBOARD WILL REMEMBER THIS</span>
             <h2>Okay, enough theory.<br />Do the 67.</h2>
             <button className="landing-button landing-button-primary" type="button" onClick={() => setSetupOpen(true)}>
-              <Play size={21} fill="currentColor" /> Start a duel
+              <Play size={21} fill="currentColor" /> Choose your mode
             </button>
           </div>
           <span className="cta-score-sticker">NEW HIGH SCORE?</span>
@@ -181,7 +185,7 @@ export function LandingPage() {
         </a>
       </footer>
 
-      {setupOpen && <PlayerSetupDialog errorMessage={setupError} initialPlayers={initialPlayers} onClose={() => setSetupOpen(false)} onSubmit={enterArena} />}
+      {setupOpen && <PlayerSetupDialog errorMessage={setupError} initialSession={initialSession} onClose={() => setSetupOpen(false)} onSubmit={enterArena} />}
       {recordsOpen && <RecordsDialog onClose={() => setRecordsOpen(false)} />}
     </main>
   );

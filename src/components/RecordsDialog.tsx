@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { Download, History, Trash2, Trophy, Upload, X } from "lucide-react";
+import { Download, Globe2, History, RefreshCw, Trash2, Trophy, Upload, Users, X } from "lucide-react";
 import {
   clearArcadeRecords,
   exportArcadeRecords,
@@ -11,24 +11,51 @@ import {
   type ArcadeRecords,
   type MatchRecord
 } from "../arcade/records";
+import { fetchSoloLeaderboard, type SoloLeaderboardEntry } from "../arcade/soloApi";
 import { ModalFrame } from "./ModalFrame";
 
 type RecordsDialogProps = {
   onClose: () => void;
 };
 
-type RecordsTab = "leaderboard" | "history";
+type RecordsTab = "solo" | "duel" | "history";
 
 export function RecordsDialog({ onClose }: RecordsDialogProps) {
-  const [tab, setTab] = useState<RecordsTab>("leaderboard");
+  const [tab, setTab] = useState<RecordsTab>("solo");
   const [records, setRecords] = useState<ArcadeRecords>(() => loadArcadeRecords());
+  const [soloEntries, setSoloEntries] = useState<SoloLeaderboardEntry[]>([]);
+  const [soloStatus, setSoloStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [soloNotice, setSoloNotice] = useState<string>();
+  const [refreshKey, setRefreshKey] = useState(0);
   const [notice, setNotice] = useState<string>();
   const importRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => setRecords(loadArcadeRecords()), []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    setSoloStatus("loading");
+    setSoloNotice(undefined);
+
+    void fetchSoloLeaderboard(controller.signal)
+      .then((entries) => {
+        setSoloEntries(entries);
+        setSoloStatus("ready");
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setSoloStatus("error");
+        setSoloNotice(error instanceof Error ? error.message : "The global leaderboard is unavailable.");
+      });
+
+    return () => controller.abort();
+  }, [refreshKey]);
+
   const leaderboard = getLeaderboard(records);
   const history = getMatchHistory(records);
+  const highlights = tab === "solo" ? soloEntries : tab === "duel" ? leaderboard : [];
 
   const handleExport = () => {
     const blob = new Blob([exportArcadeRecords(records)], { type: "application/json" });
@@ -62,24 +89,28 @@ export function RecordsDialog({ onClose }: RecordsDialogProps) {
   };
 
   const handleClear = () => {
-    if (!window.confirm("Clear every 67 Duels match and leaderboard entry on this browser?")) {
+    if (!window.confirm("Clear every local Duel match and leaderboard entry on this browser?")) {
       return;
     }
 
     try {
       clearArcadeRecords();
       setRecords({ version: 1, matches: [] });
-      setNotice("All arcade records cleared.");
+      setNotice("All local Duel records cleared.");
     } catch {
       setNotice("This browser could not clear its saved records.");
     }
   };
 
   return (
-    <ModalFrame className="records-dialog" labelledBy="records-title" onClose={onClose}>
+    <ModalFrame
+      className={"records-dialog " + (highlights.length > 0 ? "records-has-highlights" : "")}
+      labelledBy="records-title"
+      onClose={onClose}
+    >
       <header className="records-header">
         <div>
-          <div className="modal-eyebrow"><Trophy size={18} /> LOCAL ARCADE</div>
+          <div className="modal-eyebrow"><Trophy size={18} /> GLOBAL + LOCAL ARCADE</div>
           <h2 id="records-title">Arcade Records</h2>
         </div>
         <button data-autofocus className="modal-close icon-button" type="button" onClick={onClose} aria-label="Close arcade records" title="Close">
@@ -88,17 +119,20 @@ export function RecordsDialog({ onClose }: RecordsDialogProps) {
       </header>
 
       <div className="record-tabs" role="tablist" aria-label="Arcade record views">
-        <button className={tab === "leaderboard" ? "active" : ""} type="button" role="tab" aria-selected={tab === "leaderboard"} onClick={() => setTab("leaderboard")}>
-          <Trophy size={17} /> Leaderboard
+        <button className={tab === "solo" ? "active" : ""} type="button" role="tab" aria-selected={tab === "solo"} onClick={() => setTab("solo")}>
+          <Globe2 size={17} /> Solo Top 50
+        </button>
+        <button className={tab === "duel" ? "active" : ""} type="button" role="tab" aria-selected={tab === "duel"} onClick={() => setTab("duel")}>
+          <Users size={17} /> Duel scores
         </button>
         <button className={tab === "history" ? "active" : ""} type="button" role="tab" aria-selected={tab === "history"} onClick={() => setTab("history")}>
-          <History size={17} /> Match history
+          <History size={17} /> Duel history
         </button>
       </div>
 
-      {leaderboard.length > 0 && (
+      {highlights.length > 0 && (
         <div className="record-highlights" aria-label="Top arcade scores">
-          {leaderboard.slice(0, 3).map((entry, index) => (
+          {highlights.slice(0, 3).map((entry, index) => (
             <div className={"record-highlight record-highlight-" + (index + 1)} key={entry.id}>
               <span>#{entry.rank}</span>
               <strong>{entry.name}</strong>
@@ -109,32 +143,87 @@ export function RecordsDialog({ onClose }: RecordsDialogProps) {
       )}
 
       <div className="records-content">
-        {tab === "leaderboard" ? <LeaderboardTable records={records} /> : <HistoryTable history={history} />}
+        {tab === "solo" && <SoloLeaderboardTable entries={soloEntries} status={soloStatus} notice={soloNotice} />}
+        {tab === "duel" && <DuelLeaderboardTable records={records} />}
+        {tab === "history" && <HistoryTable history={history} />}
       </div>
 
       <footer className="records-footer">
-        <div className="records-tools">
-          <button type="button" onClick={handleExport} title="Export records as JSON">
-            <Download size={17} /> Export
-          </button>
-          <button type="button" onClick={() => importRef.current?.click()} title="Import records from JSON">
-            <Upload size={17} /> Import
-          </button>
-          <button className="danger" type="button" onClick={handleClear} disabled={records.matches.length === 0}>
-            <Trash2 size={17} /> Clear
-          </button>
-          <input ref={importRef} className="visually-hidden" type="file" accept="application/json,.json" tabIndex={-1} aria-hidden="true" onChange={handleImport} />
-        </div>
-        <span className="records-notice" role="status">{notice ?? records.matches.length + " matches saved on this browser"}</span>
+        {tab === "solo" ? (
+          <>
+            <div className="records-tools">
+              <button type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={soloStatus === "loading"}>
+                <RefreshCw size={17} /> Refresh
+              </button>
+            </div>
+            <span className="records-notice" role="status">
+              {soloStatus === "loading" ? "Loading the global board..." : soloNotice ?? "Top 50 Solo performances"}
+            </span>
+          </>
+        ) : (
+          <>
+            <div className="records-tools">
+              <button type="button" onClick={handleExport} title="Export local Duel records as JSON">
+                <Download size={17} /> Export
+              </button>
+              <button type="button" onClick={() => importRef.current?.click()} title="Import local Duel records from JSON">
+                <Upload size={17} /> Import
+              </button>
+              <button className="danger" type="button" onClick={handleClear} disabled={records.matches.length === 0}>
+                <Trash2 size={17} /> Clear
+              </button>
+              <input ref={importRef} className="visually-hidden" type="file" accept="application/json,.json" tabIndex={-1} aria-hidden="true" onChange={handleImport} />
+            </div>
+            <span className="records-notice" role="status">{notice ?? records.matches.length + " Duel matches saved on this browser"}</span>
+          </>
+        )}
       </footer>
     </ModalFrame>
   );
 }
 
-function LeaderboardTable({ records }: { records: ArcadeRecords }) {
+function SoloLeaderboardTable({
+  entries,
+  notice,
+  status
+}: {
+  entries: SoloLeaderboardEntry[];
+  notice?: string;
+  status: "loading" | "ready" | "error";
+}) {
+  if (status === "loading") {
+    return <EmptyRecords icon={<RefreshCw className="record-spinner" size={34} />} title="Calling the global board" copy="One tiny Redis read. Very serious business." />;
+  }
+
+  if (status === "error") {
+    return <EmptyRecords icon={<Globe2 size={34} />} title="The global board is taking a nap" copy={notice ?? "Try refreshing in a moment."} />;
+  }
+
+  if (entries.length === 0) {
+    return <EmptyRecords icon={<Trophy size={34} />} title="The global board is wide open" copy="Finish a Solo run and claim the first spot." />;
+  }
+
+  return (
+    <table className="records-table">
+      <thead><tr><th>Rank</th><th>Player</th><th>Score</th><th>Played</th></tr></thead>
+      <tbody>
+        {entries.map((entry) => (
+          <tr key={entry.id}>
+            <td data-label="Rank"><strong>#{entry.rank}</strong></td>
+            <td data-label="Player">{entry.name}</td>
+            <td data-label="Score"><b className="table-score">{entry.score}</b></td>
+            <td data-label="Played">{formatDate(entry.playedAt)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function DuelLeaderboardTable({ records }: { records: ArcadeRecords }) {
   const entries = getLeaderboard(records);
   if (entries.length === 0) {
-    return <EmptyRecords icon={<Trophy size={34} />} title="The board is suspiciously empty" copy="Finish a duel and the first score lands here." />;
+    return <EmptyRecords icon={<Trophy size={34} />} title="The local board is suspiciously empty" copy="Finish a duel and the first score lands here." />;
   }
 
   return (
@@ -157,7 +246,7 @@ function LeaderboardTable({ records }: { records: ArcadeRecords }) {
 
 function HistoryTable({ history }: { history: MatchRecord[] }) {
   if (history.length === 0) {
-    return <EmptyRecords icon={<History size={34} />} title="No legendary battles yet" copy="The full matchup and winner will appear after each round." />;
+    return <EmptyRecords icon={<History size={34} />} title="No legendary battles yet" copy="The full matchup and winner will appear after each Duel round." />;
   }
 
   return (

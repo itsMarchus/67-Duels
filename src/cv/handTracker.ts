@@ -82,15 +82,16 @@ const HAND_CONNECTIONS: Array<[number, number]> = [
 ];
 
 export async function createHandLandmarker(
-  settings: DetectionSettings = PARTY_FORGIVING_SETTINGS
+  settings: DetectionSettings = PARTY_FORGIVING_SETTINGS,
+  numHands = 4
 ): Promise<HandLandmarker> {
   const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
 
   try {
-    return await createWithDelegate("GPU", vision, settings);
+    return await createWithDelegate("GPU", vision, settings, numHands);
   } catch (gpuError) {
     console.warn("MediaPipe GPU delegate failed, falling back to CPU", gpuError);
-    return createWithDelegate("CPU", vision, settings);
+    return createWithDelegate("CPU", vision, settings, numHands);
   }
 }
 
@@ -102,7 +103,8 @@ export function drawHandOverlay(
   observations: HandObservation[],
   playerStates: Record<"left" | "right", PlayerTrackingState>,
   debugOverlay: boolean,
-  metrics?: TrackingMetrics
+  metrics?: TrackingMetrics,
+  singlePlayerMode = false
 ): void {
   const context = canvas.getContext("2d");
   if (!context) {
@@ -121,7 +123,9 @@ export function drawHandOverlay(
   context.lineJoin = "round";
 
   for (const observation of observations) {
-    const color = observation.zone === "left" ? "#f43f5e" : observation.zone === "right" ? "#2563eb" : "#f59e0b";
+    const color = singlePlayerMode
+      ? "#e11d48"
+      : observation.zone === "left" ? "#f43f5e" : observation.zone === "right" ? "#2563eb" : "#f59e0b";
     context.strokeStyle = color;
     context.fillStyle = color;
 
@@ -153,7 +157,9 @@ export function drawHandOverlay(
   }
 
   drawDebugText(context, canvas, playerStates.left, 24, "#f43f5e");
-  drawDebugText(context, canvas, playerStates.right, canvas.width - 300, "#2563eb");
+  if (!singlePlayerMode) {
+    drawDebugText(context, canvas, playerStates.right, canvas.width - 300, "#2563eb");
+  }
   if (metrics) {
     drawMetricsText(context, canvas, metrics);
   }
@@ -162,7 +168,8 @@ export function drawHandOverlay(
 async function createWithDelegate(
   delegate: "CPU" | "GPU",
   vision: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>,
-  settings: DetectionSettings
+  settings: DetectionSettings,
+  numHands: number
 ) {
   return HandLandmarker.createFromOptions(vision, {
     baseOptions: {
@@ -170,7 +177,7 @@ async function createWithDelegate(
       delegate
     },
     runningMode: "VIDEO",
-    numHands: 4,
+    numHands,
     minHandDetectionConfidence: settings.modelDetectionConfidence,
     minHandPresenceConfidence: settings.modelPresenceConfidence,
     minTrackingConfidence: settings.modelTrackingConfidence

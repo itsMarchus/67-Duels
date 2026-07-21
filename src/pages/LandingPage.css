@@ -671,7 +671,7 @@
 .records-dialog {
   display: grid;
   width: min(920px, 100%);
-  grid-template-rows: auto auto auto minmax(160px, 1fr) auto;
+  grid-template-rows: auto auto minmax(160px, 1fr) auto;
   max-height: min(760px, calc(100svh - 40px));
   overflow: hidden;
 }
@@ -1235,4 +1235,93 @@
 
 .camera-fps-note strong {
   color: #151515;
+}
+
+.setup-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.setup-mode-switch button {
+  display: grid;
+  min-height: 74px;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 9px;
+  padding: 12px 14px;
+  border: 3px solid #151515;
+  border-radius: 3px;
+  background: #fff;
+  color: #151515;
+  font-size: 17px;
+  font-weight: 950;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setup-mode-switch button small {
+  grid-column: 2;
+  color: #666;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.setup-mode-switch button.active {
+  box-shadow: 5px 5px 0 #151515;
+}
+
+.setup-mode-switch button.active.solo {
+  background: #bbf7d0;
+}
+
+.setup-mode-switch button.active.duel {
+  background: #fef08a;
+}
+
+.player-form-solo {
+  grid-template-columns: 1fr;
+}
+
+.player-name-solo input:focus {
+  box-shadow: 5px 5px 0 #4ade80;
+}
+
+.record-tabs {
+  flex-wrap: wrap;
+}
+
+.record-spinner {
+  animation: record-spin 1s linear infinite;
+}
+
+@keyframes record-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 520px) {
+  .setup-mode-switch {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-mode-switch button {
+    min-height: 60px;
+  }
+
+  .record-tabs button {
+    flex-basis: calc(50% - 4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record-spinner {
+    animation: none;
+  }
+}
+.records-dialog.records-has-highlights {
+  grid-template-rows: auto auto auto minmax(160px, 1fr) auto;
 }
