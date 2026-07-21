@@ -81,6 +81,42 @@ const HAND_CONNECTIONS: Array<[number, number]> = [
   [0, 17]
 ];
 
+const sharedTrackerPromises = new Map<string, Promise<HandLandmarker>>();
+
+function sharedTrackerKey(settings: DetectionSettings, numHands: number): string {
+  return [
+    numHands,
+    settings.modelDetectionConfidence,
+    settings.modelPresenceConfidence,
+    settings.modelTrackingConfidence
+  ].join(":");
+}
+
+export function preloadSharedHandLandmarker(
+  settings: DetectionSettings = PARTY_FORGIVING_SETTINGS,
+  numHands = 4
+): void {
+  void getSharedHandLandmarker(settings, numHands);
+}
+
+export function getSharedHandLandmarker(
+  settings: DetectionSettings = PARTY_FORGIVING_SETTINGS,
+  numHands = 4
+): Promise<HandLandmarker> {
+  const key = sharedTrackerKey(settings, numHands);
+  const cached = sharedTrackerPromises.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const trackerPromise = createHandLandmarker(settings, numHands).catch((error) => {
+    sharedTrackerPromises.delete(key);
+    throw error;
+  });
+  sharedTrackerPromises.set(key, trackerPromise);
+  return trackerPromise;
+}
+
 export async function createHandLandmarker(
   settings: DetectionSettings = PARTY_FORGIVING_SETTINGS,
   numHands = 4

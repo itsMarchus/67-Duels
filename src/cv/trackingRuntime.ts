@@ -1,5 +1,5 @@
 import type { HandLandmarker } from "@mediapipe/tasks-vision";
-import { createHandLandmarker, MODEL_PATH, WASM_PATH } from "./handTracker";
+import { getSharedHandLandmarker, MODEL_PATH, WASM_PATH } from "./handTracker";
 import { observationsFromResult } from "./handObservations";
 import type { DetectionSettings, HandObservation } from "./types";
 import type {
@@ -34,7 +34,7 @@ export async function createHandTrackingRuntime(settings: DetectionSettings, num
     }
   }
 
-  return new MainThreadTrackingRuntime(await createHandLandmarker(settings, numHands));
+  return new MainThreadTrackingRuntime(await getSharedHandLandmarker(settings, numHands));
 }
 
 export function supportsWorkerTracking(scope: typeof globalThis = globalThis): boolean {
@@ -64,7 +64,7 @@ class MainThreadTrackingRuntime implements HandTrackingRuntime {
   }
 
   close(): void {
-    this.tracker.close();
+    // The shared fallback model remains ready for camera restarts and rematches.
   }
 }
 
