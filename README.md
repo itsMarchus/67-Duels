@@ -44,14 +44,11 @@ Camera frames and hand landmarks never leave the device. Solo sends only the ent
 git clone https://github.com/itsMarchus/67-Duels.git
 cd 67-Duels
 npm install
+npx vercel@56.4.1 pull --yes --environment development
 npm run dev
 ```
 
-Open the URL printed by Vite. Duel mode and all camera tracking work through the Vite development server. Solo leaderboard API routes require Vercel's local runtime:
-
-```bash
-npx vercel dev
-```
+Open the URL printed by Vercel, normally `http://localhost:3000`. The default command loads `.env.local` and starts Vite together with the Vercel Functions, so both Solo and Duel work. Use `npm run dev:frontend` only when intentionally testing the frontend without Solo API routes on port `5173`.
 
 ## How To Play
 
@@ -119,7 +116,7 @@ For local full-stack development, create `.env.local` from `.env.example` or pul
 
 ```bash
 npx vercel env pull .env.local
-npx vercel dev
+npm run dev
 ```
 
 The credentials and signing secret deliberately have no `VITE_` prefix, so Vite cannot place them in the browser bundle. `REDIS_KEY_PREFIX` is also server-only. `.env`, `.env.*`, and `.vercel/` are ignored by Git; only `.env.example`, with blank credential placeholders and the safe default prefix, is committed.
@@ -168,9 +165,9 @@ public/
 ## Commands
 
 ```bash
-npm run dev       # Start the frontend-only Vite server
-npx vercel dev    # Start frontend plus Vercel Functions
-npm run build     # Type-check client/API code and build production assets
+npm run dev           # Start Vite plus Vercel Functions, normally on port 3000
+npm run dev:frontend  # Start frontend-only Vite without Solo APIs
+npm run build         # Type-check client/API code and build production assets
 npm run preview   # Preview static production assets
 npm test          # Run Vitest in watch mode
 npm run test:run  # Run all tests once

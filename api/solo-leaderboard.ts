@@ -1,11 +1,11 @@
-import type { VercelRequest, VercelResponse } from "../server/vercelTypes";
+import type { VercelRequest, VercelResponse } from "../server/vercelTypes.js";
 import { Redis } from "@upstash/redis";
 import {
   SOLO_LEADERBOARD_LIMIT,
   parseRankedSoloScores,
   redisConfigured,
   soloRedisKeys
-} from "../server/soloLeaderboard";
+} from "../server/soloLeaderboard.js";
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   response.setHeader("Content-Type", "application/json; charset=utf-8");

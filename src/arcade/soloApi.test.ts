@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { parseSoloLeaderboard, parseSoloScoreResult } from "./soloApi";
+import { describe, expect, it, vi } from "vitest";
+import { parseSoloLeaderboard, parseSoloScoreResult, requestSoloRound } from "./soloApi";
 
 const entry = {
   id: "attempt-1",
@@ -16,6 +16,19 @@ describe("solo API responses", () => {
   it("rejects malformed leaderboard entries", () => {
     expect(() => parseSoloLeaderboard({ entries: [{ ...entry, score: 999, rank: 1 }] })).toThrow(/invalid response/);
     expect(() => parseSoloLeaderboard({ entries: "nope" })).toThrow(/invalid response/);
+  });
+
+  it("explains when the frontend-only server receives a Solo request", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", {
+      status: 404,
+      headers: { "Content-Type": "text/plain" }
+    })));
+
+    try {
+      await expect(requestSoloRound()).rejects.toThrow(/npm run dev/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("validates score submission results", () => {

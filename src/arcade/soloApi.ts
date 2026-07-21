@@ -20,6 +20,7 @@ export async function requestSoloRound(): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   });
+  assertApiRuntime(response);
   const data = await readJson(response);
   if (!response.ok || !data || typeof data !== "object" || !("token" in data) || typeof data.token !== "string") {
     throw new Error(apiError(data, "The global leaderboard is unavailable right now."));
@@ -34,6 +35,7 @@ export async function submitSoloScore(token: string, name: string, score: number
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, name, score })
   });
+  assertApiRuntime(response);
   const data = await readJson(response);
   if (!response.ok) {
     throw new Error(apiError(data, "The score could not reach the global leaderboard."));
@@ -47,6 +49,7 @@ export async function fetchSoloLeaderboard(signal?: AbortSignal): Promise<SoloLe
     headers: { Accept: "application/json" },
     signal
   });
+  assertApiRuntime(response);
   const data = await readJson(response);
   if (!response.ok) {
     throw new Error(apiError(data, "The global leaderboard is unavailable right now."));
@@ -110,6 +113,17 @@ function isSoloLeaderboardEntry(value: unknown): value is SoloLeaderboardEntry {
     && Number.isInteger(candidate.rank)
     && Number(candidate.rank) >= 1
     && Number(candidate.rank) <= SOLO_LEADERBOARD_LIMIT;
+}
+
+function assertApiRuntime(response: Response): void {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (response.status === 404 || !contentType.includes("application/json")) {
+    throw new Error("Solo APIs are not running. Start with npm run dev and open the URL it prints.");
+  }
 }
 
 async function readJson(response: Response): Promise<unknown> {

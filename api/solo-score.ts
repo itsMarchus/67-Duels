@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from "../server/vercelTypes";
+import type { VercelRequest, VercelResponse } from "../server/vercelTypes.js";
 import { Redis } from "@upstash/redis";
 import {
   SAVE_SOLO_SCORE_SCRIPT,
@@ -12,7 +12,7 @@ import {
   soloRedisKeys,
   soloRateLimitKey,
   validateSoloScoreRequest
-} from "../server/soloLeaderboard";
+} from "../server/soloLeaderboard.js";
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   response.setHeader("Cache-Control", "no-store");
