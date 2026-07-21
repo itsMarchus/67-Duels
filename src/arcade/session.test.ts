@@ -34,9 +34,9 @@ describe("active game session", () => {
     const storage = memoryStorage();
     storage.setItem(ACTIVE_PLAYERS_STORAGE_KEY, JSON.stringify({ left: "Old", right: "Names" }));
 
-    saveActiveGameSession({ mode: "solo", player: " Freshie " }, storage);
+    saveActiveGameSession({ mode: "solo", player: " Player " }, storage);
 
-    expect(loadActiveGameSession(storage)).toEqual({ mode: "solo", player: "Freshie" });
+    expect(loadActiveGameSession(storage)).toEqual({ mode: "solo", player: "Player" });
     expect(storage.getItem(ACTIVE_PLAYERS_STORAGE_KEY)).toBeNull();
     clearActiveGameSession(storage);
     expect(storage.getItem(ACTIVE_GAME_STORAGE_KEY)).toBeNull();

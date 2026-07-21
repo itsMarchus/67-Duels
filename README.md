@@ -8,7 +8,7 @@
   <strong>Solo leaderboard chase or side-by-side duel. One camera. Thirty seconds of extremely serious 67 competition.</strong>
 </p>
 
-67 Duels is a browser arcade game built for a college freshie event. MediaPipe tracks the player's hands locally and counts each clear high/low swap as a rep.
+67 Duels is a browser arcade game for quick Solo leaderboard runs and side-by-side competition. MediaPipe tracks each player's hands locally and counts every clear high/low swap as a rep.
 
 - **Solo:** one player, two hands, and a public Redis-backed Top 100.
 - **Duel:** two players, four hands, split camera lanes, and browser-local match records.
@@ -125,7 +125,7 @@ Never paste real Redis credentials into source files, client code, GitHub issues
 
 ## Solo Submission Protection
 
-Solo mode has no login, so a determined person can still forge browser-side gameplay. The API adds practical event-grade protection without uploading video:
+Solo mode has no login, so a determined person can still forge browser-side gameplay. The API adds practical abuse protection without uploading video:
 
 - A signed token is issued before each Solo countdown.
 - Submissions are accepted only after a 30-second round and expire after five minutes.
@@ -194,7 +194,7 @@ Deployment support included here:
 - `public/_redirects` and `public/_headers` support static-only hosts, where Duel works but the Solo API does not.
 - Public assets and React Router honor Vite's base path.
 
-Before the event, test the deployed URL on the actual laptop and at least one phone. Complete a Solo run, confirm its global rank appears, complete a Duel, reload, and confirm the local record remains.
+Before sharing a deployment, test its URL on a laptop and at least one phone. Complete a Solo run, confirm its global rank appears, complete a Duel, reload, and confirm the local record remains.
 
 ## Built With
 

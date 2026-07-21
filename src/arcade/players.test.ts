@@ -18,7 +18,7 @@ function memoryStorage(): StorageLike {
 
 describe("active players", () => {
   it("trims valid names and rejects empty or oversized names", () => {
-    expect(normalizePlayerName("  Freshie  ")).toBe("Freshie");
+    expect(normalizePlayerName("  Player  ")).toBe("Player");
     expect(normalizePlayerName("   ")).toBeUndefined();
     expect(normalizePlayerName("a".repeat(19))).toBeUndefined();
   });

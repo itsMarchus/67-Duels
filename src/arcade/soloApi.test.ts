@@ -3,7 +3,7 @@ import { parseSoloLeaderboard, parseSoloScoreResult, requestSoloRound } from "./
 
 const entry = {
   id: "attempt-1",
-  name: "Freshie",
+  name: "Player",
   score: 67,
   playedAt: "2026-07-21T10:00:00.000Z"
 };

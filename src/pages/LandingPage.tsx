@@ -80,7 +80,7 @@ export function LandingPage() {
           <img className="inventor-meme" src={publicAssetUrl("memes/67_inventor_disorted_img.jpg")} alt="The distorted 67 inventor meme" />
 
           <div className="hero-copy">
-            <span className="hero-kicker"><Swords size={20} /> FRESHIE ARCADE CHALLENGE</span>
+            <span className="hero-kicker"><Swords size={20} /> HAND-TRACKED ARCADE CHALLENGE</span>
             <h1><span>67</span> Duels</h1>
             <div className="minecraft-splash">67 in the big 2026?!</div>
             <p>One or two players. Hand-tracked chaos. Thirty seconds to make the leaderboard regret existing.</p>

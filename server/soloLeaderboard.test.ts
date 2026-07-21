@@ -65,13 +65,13 @@ describe("Solo leaderboard security", () => {
 
   it("validates names and plausible scores", () => {
     expect(validateSoloScoreRequest(
-      { token, name: "  Freshie  ", score: 67 },
+      { token, name: "  Player  ", score: 67 },
       secret,
       issuedAt + SOLO_ROUND_MIN_AGE_MS
-    )).toMatchObject({ name: "Freshie", score: 67 });
+    )).toMatchObject({ name: "Player", score: 67 });
 
     expect(() => validateSoloScoreRequest(
-      { token, name: "Freshie", score: 401 },
+      { token, name: "Player", score: 401 },
       secret,
       issuedAt + SOLO_ROUND_MIN_AGE_MS
     )).toThrow(SoloRequestError);
