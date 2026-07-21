@@ -1,7 +1,6 @@
 import {
   FilesetResolver,
-  HandLandmarker,
-  type HandLandmarkerResult
+  HandLandmarker
 } from "@mediapipe/tasks-vision";
 import {
   PARTY_FORGIVING_SETTINGS,
@@ -11,7 +10,7 @@ import {
   type TrackingMetrics
 } from "./types";
 import { publicAssetUrl } from "../config/assets";
-import { assignZone, centerOfPalmLandmarks } from "./zones";
+export { observationsFromResult } from "./handObservations";
 
 export const MODEL_PATH = publicAssetUrl("models/hand_landmarker.task");
 export const WASM_PATH = publicAssetUrl("wasm");
@@ -53,25 +52,6 @@ export async function createHandLandmarker(
   }
 }
 
-export function observationsFromResult(result: HandLandmarkerResult): HandObservation[] {
-  return result.landmarks.map((landmarks, index) => {
-    const mirroredLandmarks = landmarks.map((landmark) => ({
-      x: 1 - landmark.x,
-      y: landmark.y,
-      z: landmark.z
-    }));
-    const center = centerOfPalmLandmarks(mirroredLandmarks);
-    const handedness = result.handedness[index]?.[0];
-
-    return {
-      landmarks: mirroredLandmarks,
-      worldLandmarks: result.worldLandmarks[index],
-      handedness: handedness?.categoryName === "Left" || handedness?.categoryName === "Right" ? handedness.categoryName : "Unknown",
-      handednessConfidence: handedness?.score ?? 0,
-      zone: assignZone(center.x)
-    };
-  });
-}
 
 export function drawHandOverlay(
   canvas: HTMLCanvasElement,

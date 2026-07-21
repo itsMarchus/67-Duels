@@ -20,5 +20,6 @@ describe("hand tracker observations", () => {
       handednessConfidence: 0.01,
       zone: "left"
     });
+    expect(observationsFromResult(result, false)[0]).not.toHaveProperty("worldLandmarks");
   });
 });

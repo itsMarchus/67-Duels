@@ -34,7 +34,7 @@ async function initialize(
   settings: DetectionSettings
 ): Promise<void> {
   try {
-    const vision = await FilesetResolver.forVisionTasks(wasmRootUrl);
+    const vision = await FilesetResolver.forVisionTasks(wasmRootUrl, true);
     let delegate: TrackingDelegate = "GPU";
 
     try {
@@ -66,7 +66,7 @@ function processFrame(frameId: number, timestamp: number, bitmap: ImageBitmap): 
       frameId,
       timestamp,
       inferenceMs,
-      observations: observationsFromResult(result)
+      observations: observationsFromResult(result, false)
     });
   } catch (error) {
     workerScope.postMessage({ type: "error", frameId, message: errorMessage(error) });

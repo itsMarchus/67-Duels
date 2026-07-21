@@ -23,9 +23,10 @@ The app includes a meme-filled landing page, player name entry, the live duel ar
 - Match history with scores, winners, and timestamps
 - Browser-local persistence for up to 500 completed matches
 - JSON export, validated import, and protected record clearing
-- GPU-first MediaPipe initialization with CPU fallback
+- Worker-based GPU-first MediaPipe inference with CPU and main-thread fallbacks
+- Adaptive `960x540` to `640x360` camera performance profiles
 - Responsive landing page and dialogs for desktop and mobile
-- Debug overlay for landmarks, lane status, and swap state
+- Debug overlay for landmarks, lane status, runtime mode, and measured FPS
 
 ## Quick Start
 
@@ -53,7 +54,7 @@ If port `5173` is busy, Vite will print the alternate local URL in the terminal.
 
 1. Select **Play Now** on the landing page.
 2. Enter a name for Player 1 and Player 2.
-3. Allow webcam access and select **Camera** in the arena.
+3. Enter the arena and allow webcam access; the camera and hand model start automatically.
 4. Stand on opposite sides of the center divider.
 5. Each player must keep two hands visible in their lane.
 6. Select **Start** and alternate one hand high while the other is low.
@@ -65,17 +66,20 @@ After the result, players can rematch with the same names, choose new players, o
 
 ```mermaid
 flowchart LR
-    A[Webcam] --> B[MediaPipe Hand Landmarker]
-    B --> C[Mirror display coordinates]
-    C --> D[Assign hands to left or right lane]
-    D --> E[Require two visible hands]
-    E --> F[Classify high and low swap state]
-    F --> G[Apply threshold and debounce]
-    G --> H[Count rep and update score]
-    H --> I[Save completed match locally]
+    A[Webcam] --> B[Fresh-frame scheduler]
+    B --> C[MediaPipe worker]
+    C --> D[Mirror display coordinates]
+    D --> E[Assign hands to left or right lane]
+    E --> F[Require two visible hands]
+    F --> G[Classify high and low swap state]
+    G --> H[Apply threshold and debounce]
+    H --> I[Count rep and update score]
+    I --> J[Save completed match locally]
 ```
 
-The hand tracker runs in `VIDEO` mode with `numHands: 4`. Detected landmarks are mirrored to match the selfie-camera display, then assigned to a player according to their horizontal center. Scoring pauses whenever a player has fewer than two valid hands in their zone.
+The hand tracker runs in `VIDEO` mode with `numHands: 4`. Supported browsers run GPU-first MediaPipe inference in a module worker so the synchronous model does not block the interface. The worker falls back to CPU, and browsers without worker frame transfer retain the compatible main-thread path. Detected landmarks are mirrored to match the selfie-camera display, then assigned to a player according to their horizontal center. Scoring pauses whenever a player has fewer than two valid hands in their zone.
+
+Camera capture starts with the balanced `960x540` profile. Before a round, measured source FPS, processed FPS, and inference latency can trigger a one-way downgrade to the `640x360` performance profile. The visible arena remains full-screen while the smaller camera texture reduces decode, transfer, and preprocessing work.
 
 A rep is recorded when the two hands alternate between these states:
 
@@ -86,11 +90,12 @@ The fast-gesture settings use a normalized vertical threshold of `0.040`, an `80
 
 ### Fast-Gesture Diagnostics
 
-The tracker processes each decoded camera frame once and limits React tracking rerenders to 20 Hz so scoring has priority. Select the bug button in the arena to show:
+The fresh-frame scheduler never queues stale camera frames. Scoring consumes every completed inference result, while the landmark canvas renders at 20 Hz and React tracking state renders at 10 Hz. Select the bug button in the arena to show:
 
-- Processed CV FPS and actual camera FPS
+- Processed CV FPS, observed decoded-camera FPS, and the track's reported FPS
 - Rolling average inference latency
-- Current detected-hand count and repeated frames skipped
+- Active worker/delegate, camera profile, and capture dimensions
+- Current detected-hand count plus busy and duplicate frame skips
 - Accepted reps, debounce rejections, and brief-dropout grace events for each player
 
 Brief hand loss preserves the last stable gesture for up to `180 ms`, but scoring remains observed-only: missing frames never create estimated extra reps.

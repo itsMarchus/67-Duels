@@ -2,7 +2,10 @@ import type { HandLandmarkerResult } from "@mediapipe/tasks-vision";
 import type { HandObservation } from "./types";
 import { assignZone, centerOfPalmLandmarks } from "./zones";
 
-export function observationsFromResult(result: HandLandmarkerResult): HandObservation[] {
+export function observationsFromResult(
+  result: HandLandmarkerResult,
+  includeWorldLandmarks = true
+): HandObservation[] {
   return result.landmarks.map((landmarks, index) => {
     const mirroredLandmarks = landmarks.map((landmark) => ({
       x: 1 - landmark.x,
@@ -14,7 +17,7 @@ export function observationsFromResult(result: HandLandmarkerResult): HandObserv
 
     return {
       landmarks: mirroredLandmarks,
-      worldLandmarks: result.worldLandmarks[index],
+      ...(includeWorldLandmarks ? { worldLandmarks: result.worldLandmarks[index] } : {}),
       handedness: handedness?.categoryName === "Left" || handedness?.categoryName === "Right"
         ? handedness.categoryName
         : "Unknown",
