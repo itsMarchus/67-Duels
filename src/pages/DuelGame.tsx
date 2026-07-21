@@ -6,6 +6,14 @@ import { clearActivePlayers, type ActivePlayers } from "../arcade/players";
 import { cameraErrorMessage, cameraSupportError, stopMediaStream } from "../cv/camera";
 import { FrameMetricsTracker, shouldProcessVideoFrame } from "../cv/frameMetrics";
 import { drawHandOverlay } from "../cv/handTracker";
+import {
+  CAMERA_PROFILES,
+  DEFAULT_CAMERA_PROFILE,
+  cameraConstraints,
+  setMotionContentHint,
+  shouldUsePerformanceProfile,
+  type CameraPerformanceProfile
+} from "../cv/performance";
 import { createHandTrackingRuntime, type HandTrackingRuntime } from "../cv/trackingRuntime";
 import { RepCounter } from "../cv/repCounter";
 import {
@@ -23,6 +31,8 @@ type CameraStatus = "idle" | "requesting" | "ready" | "error";
 type TrackerStatus = "idle" | "loading" | "ready" | "error";
 
 const COUNTDOWN_SECONDS = 3;
+const TRACKING_RENDER_INTERVAL_MS = 100;
+const OVERLAY_RENDER_INTERVAL_MS = 50;
 const EMPTY_TRACKING: Record<PlayerId, PlayerTrackingState> = {
   left: buildPlayerTrackingState("left", []),
   right: buildPlayerTrackingState("right", [])
@@ -59,6 +69,9 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   const metricsRef = useRef(new FrameMetricsTracker());
   const cameraRequestIdRef = useRef(0);
   const cameraFpsRef = useRef(0);
+  const cameraSizeRef = useRef({ width: 0, height: 0 });
+  const performanceProfileRef = useRef<CameraPerformanceProfile>(DEFAULT_CAMERA_PROFILE);
+  const adaptationAttemptedRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const roundRef = useRef<RoundState>(createInitialRoundState());
   const settingsRef = useRef<DetectionSettings>(PARTY_FORGIVING_SETTINGS);
@@ -98,6 +111,34 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
     return bothPlayersReady ? "both players locked" : "show both hands";
   }, [bothPlayersReady, cameraStatus, round.phase, trackerStatus]);
 
+  const enablePerformanceProfile = useCallback(async () => {
+    if (adaptationAttemptedRef.current) {
+      return;
+    }
+
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) {
+      return;
+    }
+
+    adaptationAttemptedRef.current = true;
+    try {
+      await track.applyConstraints(cameraConstraints("performance"));
+      setMotionContentHint(track);
+      const actual = track.getSettings();
+      const profile = CAMERA_PROFILES.performance;
+      performanceProfileRef.current = "performance";
+      cameraFpsRef.current = actual.frameRate ?? cameraFpsRef.current;
+      cameraSizeRef.current = {
+        width: actual.width ?? profile.width,
+        height: actual.height ?? profile.height
+      };
+      metricsRef.current.reset();
+    } catch (error) {
+      console.warn("Could not enable the lower-resolution performance profile", error);
+    }
+  }, []);
+
   const startCamera = useCallback(async () => {
     const supportError = cameraSupportError(
       window.isSecureContext,
@@ -124,6 +165,9 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
     setCameraStatus("requesting");
     setTrackerStatus("loading");
     setErrorMessage(undefined);
+    performanceProfileRef.current = DEFAULT_CAMERA_PROFILE;
+    adaptationAttemptedRef.current = false;
+    cameraSizeRef.current = { width: 0, height: 0 };
     stopMediaStream(streamRef.current);
     streamRef.current = null;
     trackerRef.current?.close();
@@ -134,12 +178,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
     try {
       stream = await mediaDevices.getUserMedia({
         audio: false,
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 60, max: 60 },
-          facingMode: "user"
-        }
+        video: cameraConstraints(DEFAULT_CAMERA_PROFILE)
       });
 
       if (requestId !== cameraRequestIdRef.current) {
@@ -147,8 +186,20 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         return;
       }
 
+      const cameraTrack = stream.getVideoTracks()[0];
+      if (!cameraTrack) {
+        throw new Error("The camera did not provide a video track.");
+      }
+
+      setMotionContentHint(cameraTrack);
+      const actualCamera = cameraTrack.getSettings();
+      const initialProfile = CAMERA_PROFILES[DEFAULT_CAMERA_PROFILE];
       streamRef.current = stream;
-      cameraFpsRef.current = stream.getVideoTracks()[0]?.getSettings().frameRate ?? 0;
+      cameraFpsRef.current = actualCamera.frameRate ?? 0;
+      cameraSizeRef.current = {
+        width: actualCamera.width ?? initialProfile.width,
+        height: actualCamera.height ?? initialProfile.height
+      };
       metricsRef.current.reset();
       video.srcObject = stream;
       await video.play();
@@ -165,7 +216,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       trackerRef.current = tracker;
       setTrackerStatus("ready");
 
-      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+      cameraTrack.addEventListener("ended", () => {
         if (streamRef.current !== stream) {
           return;
         }
@@ -288,7 +339,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       }
 
       const rect = video.getBoundingClientRect();
-      const ratio = window.devicePixelRatio || 1;
+      const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
       canvas.width = Math.max(1, Math.floor(rect.width * ratio));
       canvas.height = Math.max(1, Math.floor(rect.height * ratio));
       canvas.style.width = rect.width + "px";
@@ -314,6 +365,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
     let cancelled = false;
     let lastVideoTime = -1;
     let lastTrackingRenderAt = Number.NEGATIVE_INFINITY;
+    let lastOverlayDrawAt = Number.NEGATIVE_INFINITY;
 
     const processFrame = (timestamp: number) => {
       const tracker = trackerRef.current;
@@ -322,13 +374,14 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       }
 
       if (!shouldProcessVideoFrame(video.currentTime, lastVideoTime)) {
-        metricsRef.current.recordSkippedFrame();
+        metricsRef.current.recordDuplicateFrame();
         return;
       }
       lastVideoTime = video.currentTime;
+      metricsRef.current.recordVideoFrame(timestamp);
 
       if (tracker.busy) {
-        metricsRef.current.recordSkippedFrame();
+        metricsRef.current.recordBusyFrame();
         return;
       }
 
@@ -357,21 +410,41 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         };
 
         metricsRef.current.recordFrame(frame.timestamp, frame.inferenceMs, nextObservations.length);
-        if (frame.timestamp - lastTrackingRenderAt >= 50) {
+        const cameraSize = cameraSizeRef.current;
+        const metrics = metricsRef.current.snapshot(
+          cameraFpsRef.current,
+          {
+            left: countersRef.current.left.getDiagnostics(),
+            right: countersRef.current.right.getDiagnostics()
+          },
+          {
+            cameraWidth: cameraSize.width,
+            cameraHeight: cameraSize.height,
+            runtimeMode: tracker.mode,
+            performanceProfile: performanceProfileRef.current
+          }
+        );
+
+        if (currentRound.phase !== "playing"
+          && shouldUsePerformanceProfile(metrics, performanceProfileRef.current)) {
+          void enablePerformanceProfile();
+        }
+
+        if (frame.timestamp - lastTrackingRenderAt >= TRACKING_RENDER_INTERVAL_MS) {
           setPlayerStates(nextStates);
           lastTrackingRenderAt = frame.timestamp;
         }
 
-        drawHandOverlay(
-          canvas,
-          nextObservations,
-          nextStates,
-          settingsRef.current.debugOverlay,
-          metricsRef.current.snapshot(cameraFpsRef.current, {
-            left: countersRef.current.left.getDiagnostics(),
-            right: countersRef.current.right.getDiagnostics()
-          })
-        );
+        if (frame.timestamp - lastOverlayDrawAt >= OVERLAY_RENDER_INTERVAL_MS) {
+          drawHandOverlay(
+            canvas,
+            nextObservations,
+            nextStates,
+            settingsRef.current.debugOverlay,
+            metrics
+          );
+          lastOverlayDrawAt = frame.timestamp;
+        }
       }).catch((error) => {
         if (cancelled) {
           return;
@@ -411,7 +484,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
         window.cancelAnimationFrame(fallbackFrameRef.current);
       }
     };
-  }, [trackerStatus]);
+  }, [enablePerformanceProfile, trackerStatus]);
 
   useEffect(() => {
     if (round.phase !== "playing") {

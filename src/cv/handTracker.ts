@@ -172,10 +172,10 @@ function drawMetricsText(
   canvas: HTMLCanvasElement,
   metrics: TrackingMetrics
 ): void {
-  const fontSize = Math.max(11, canvas.width * 0.009);
+  const fontSize = Math.max(9, Math.min(14, canvas.width * 0.009));
   const lineHeight = fontSize * 1.4;
-  const panelWidth = Math.min(canvas.width - 24, Math.max(340, canvas.width * 0.5));
-  const panelHeight = lineHeight * 3 + 20;
+  const panelWidth = Math.min(canvas.width - 24, Math.max(480, canvas.width * 0.72));
+  const panelHeight = lineHeight * 4 + 20;
   const x = (canvas.width - panelWidth) / 2;
   const y = canvas.height - panelHeight - 14;
   const left = metrics.diagnostics.left;
@@ -191,23 +191,30 @@ function drawMetricsText(
   context.fillStyle = "#ffffff";
   context.shadowBlur = 0;
   context.fillText(
-    "CV " + metrics.processedFps.toFixed(1) + "/" + formatCameraFps(metrics.cameraFps)
-      + " | " + metrics.averageInferenceMs.toFixed(1) + "ms | hands " + metrics.detectedHands
-      + " | repeat " + metrics.duplicateFramesSkipped,
+    "CV " + metrics.processedFps.toFixed(1) + " | camera "
+      + metrics.observedCameraFps.toFixed(1) + "/" + formatCameraFps(metrics.cameraFps)
+      + " | " + metrics.averageInferenceMs.toFixed(1) + "ms",
     x + 10,
     y + lineHeight
+  );
+  context.fillText(
+    metrics.runtimeMode.replace("-", " ") + " | " + metrics.performanceProfile
+      + " " + metrics.cameraWidth + "x" + metrics.cameraHeight
+      + " | hands " + metrics.detectedHands + " | busy " + metrics.busyFramesSkipped,
+    x + 10,
+    y + lineHeight * 2
   );
   context.fillText(
     "LEFT reps " + left.acceptedReps + " | reject " + left.debounceRejections
       + " | grace " + left.graceDropouts + (left.graceActive ? "*" : ""),
     x + 10,
-    y + lineHeight * 2
+    y + lineHeight * 3
   );
   context.fillText(
     "RIGHT reps " + right.acceptedReps + " | reject " + right.debounceRejections
       + " | grace " + right.graceDropouts + (right.graceActive ? "*" : ""),
     x + 10,
-    y + lineHeight * 3
+    y + lineHeight * 4
   );
   context.restore();
 }

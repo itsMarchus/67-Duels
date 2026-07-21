@@ -47,10 +47,17 @@ export type RepDiagnostics = {
 
 export type TrackingMetrics = {
   processedFps: number;
+  observedCameraFps: number;
   averageInferenceMs: number;
   detectedHands: number;
   cameraFps: number;
+  cameraWidth: number;
+  cameraHeight: number;
+  sampleWindowMs: number;
   duplicateFramesSkipped: number;
+  busyFramesSkipped: number;
+  runtimeMode: "worker-gpu" | "worker-cpu" | "main-thread";
+  performanceProfile: "balanced" | "performance";
   diagnostics: Record<PlayerId, RepDiagnostics>;
 };
 export type RoundState = {

@@ -13,34 +13,54 @@ describe("frame metrics", () => {
     expect(shouldProcessVideoFrame(1.25, 1.25)).toBe(false);
   });
 
-  it("reports rolling FPS, inference latency, hands, and rep diagnostics", () => {
+  it("reports source and processed FPS independently", () => {
     const tracker = new FrameMetricsTracker();
+    for (const timestamp of [0, 40, 80, 120, 160, 200]) {
+      tracker.recordVideoFrame(timestamp);
+    }
     tracker.recordFrame(0, 10, 2);
     tracker.recordFrame(100, 20, 3);
     tracker.recordFrame(200, 30, 4);
-    tracker.recordSkippedFrame();
+    tracker.recordDuplicateFrame();
+    tracker.recordBusyFrame();
 
-    expect(tracker.snapshot(30, diagnostics)).toEqual({
+    expect(tracker.snapshot(30, diagnostics, {
+      cameraWidth: 960,
+      cameraHeight: 540,
+      runtimeMode: "worker-gpu",
+      performanceProfile: "balanced"
+    })).toEqual({
       processedFps: 10,
+      observedCameraFps: 25,
       averageInferenceMs: 20,
       detectedHands: 4,
       cameraFps: 30,
+      cameraWidth: 960,
+      cameraHeight: 540,
+      sampleWindowMs: 200,
       duplicateFramesSkipped: 1,
+      busyFramesSkipped: 1,
+      runtimeMode: "worker-gpu",
+      performanceProfile: "balanced",
       diagnostics
     });
   });
 
-  it("resets all rolling samples", () => {
+  it("resets all rolling samples and skip counters", () => {
     const tracker = new FrameMetricsTracker();
+    tracker.recordVideoFrame(0);
     tracker.recordFrame(0, 12, 4);
-    tracker.recordSkippedFrame();
+    tracker.recordDuplicateFrame();
+    tracker.recordBusyFrame();
     tracker.reset();
 
     expect(tracker.snapshot(60, diagnostics)).toMatchObject({
       processedFps: 0,
+      observedCameraFps: 0,
       averageInferenceMs: 0,
       detectedHands: 0,
-      duplicateFramesSkipped: 0
+      duplicateFramesSkipped: 0,
+      busyFramesSkipped: 0
     });
   });
 });
