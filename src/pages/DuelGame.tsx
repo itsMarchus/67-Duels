@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bug, Camera, Home, Play, RotateCcw, UserRound, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import type { HandLandmarker } from "@mediapipe/tasks-vision";
 import { appendMatch, createMatchId, createMatchRecord } from "../arcade/records";
 import { clearActivePlayers, type ActivePlayers } from "../arcade/players";
 import { cameraErrorMessage, cameraSupportError, stopMediaStream } from "../cv/camera";
 import { FrameMetricsTracker, shouldProcessVideoFrame } from "../cv/frameMetrics";
-import { createHandLandmarker, drawHandOverlay, observationsFromResult } from "../cv/handTracker";
+import { drawHandOverlay } from "../cv/handTracker";
+import { createHandTrackingRuntime, type HandTrackingRuntime } from "../cv/trackingRuntime";
 import { RepCounter } from "../cv/repCounter";
 import {
   PARTY_FORGIVING_SETTINGS,
@@ -52,7 +52,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const trackerRef = useRef<HandLandmarker | null>(null);
+  const trackerRef = useRef<HandTrackingRuntime | null>(null);
   const fallbackFrameRef = useRef<number>();
   const videoFrameCallbackRef = useRef<number>();
   const timerFrameRef = useRef<number>();
@@ -155,7 +155,7 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       setCameraStatus("ready");
       setRound((current) => current.phase === "cameraSetup" ? { ...current, phase: "readyCheck" } : current);
 
-      const tracker = await createHandLandmarker(settingsRef.current);
+      const tracker = await createHandTrackingRuntime(settingsRef.current);
       if (requestId !== cameraRequestIdRef.current) {
         tracker.close();
         stopMediaStream(stream);
@@ -327,44 +327,58 @@ export function DuelGame({ players }: { players: ActivePlayers }) {
       }
       lastVideoTime = video.currentTime;
 
-      const inferenceStartedAt = performance.now();
-      const result = tracker.detectForVideo(video, timestamp);
-      const inferenceMs = performance.now() - inferenceStartedAt;
-      const nextObservations = observationsFromResult(result);
-      const rawStates = statesFromObservations(nextObservations);
-      const currentRound = roundRef.current;
+      if (tracker.busy) {
+        metricsRef.current.recordSkippedFrame();
+        return;
+      }
 
-      if (currentRound.phase === "playing") {
-        for (const playerId of ["left", "right"] as const) {
-          const counter = countersRef.current[playerId];
-          const event = counter.update(rawStates[playerId].handCenters, timestamp);
-          if (event) {
-            setRound((activeRound) => scoreRep(activeRound, playerId));
+      void tracker.processFrame(video, timestamp).then((frame) => {
+        if (cancelled || !frame) {
+          return;
+        }
+
+        const nextObservations = frame.observations;
+        const rawStates = statesFromObservations(nextObservations);
+        const currentRound = roundRef.current;
+
+        if (currentRound.phase === "playing") {
+          for (const playerId of ["left", "right"] as const) {
+            const counter = countersRef.current[playerId];
+            const event = counter.update(rawStates[playerId].handCenters, frame.timestamp);
+            if (event) {
+              setRound((activeRound) => scoreRep(activeRound, playerId));
+            }
           }
         }
-      }
 
-      const nextStates = {
-        left: { ...rawStates.left, swapState: countersRef.current.left.getState() },
-        right: { ...rawStates.right, swapState: countersRef.current.right.getState() }
-      };
+        const nextStates = {
+          left: { ...rawStates.left, swapState: countersRef.current.left.getState() },
+          right: { ...rawStates.right, swapState: countersRef.current.right.getState() }
+        };
 
-      metricsRef.current.recordFrame(timestamp, inferenceMs, nextObservations.length);
-      if (timestamp - lastTrackingRenderAt >= 50) {
-        setPlayerStates(nextStates);
-        lastTrackingRenderAt = timestamp;
-      }
+        metricsRef.current.recordFrame(frame.timestamp, frame.inferenceMs, nextObservations.length);
+        if (frame.timestamp - lastTrackingRenderAt >= 50) {
+          setPlayerStates(nextStates);
+          lastTrackingRenderAt = frame.timestamp;
+        }
 
-      drawHandOverlay(
-        canvas,
-        nextObservations,
-        nextStates,
-        settingsRef.current.debugOverlay,
-        metricsRef.current.snapshot(cameraFpsRef.current, {
-          left: countersRef.current.left.getDiagnostics(),
-          right: countersRef.current.right.getDiagnostics()
-        })
-      );
+        drawHandOverlay(
+          canvas,
+          nextObservations,
+          nextStates,
+          settingsRef.current.debugOverlay,
+          metricsRef.current.snapshot(cameraFpsRef.current, {
+            left: countersRef.current.left.getDiagnostics(),
+            right: countersRef.current.right.getDiagnostics()
+          })
+        );
+      }).catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        setTrackerStatus("error");
+        setErrorMessage(error instanceof Error ? error.message : "Hand tracking stopped unexpectedly.");
+      });
     };
 
     const scheduleNextFrame = () => {
